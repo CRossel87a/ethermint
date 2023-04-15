@@ -1,2 +1,8 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+client/docs/swagger-ui/* linguist-vendored
+client/docs/statik/* linguist-vendored
+third-party/* linguist-vendored
+client/docs/* linguist-documentation
+docs/* linguist-documentation
+x/**/spec/* linguist-documentation
+**/*.pb.go linguist-generated
+**/*.pb.gw.go linguist-generated

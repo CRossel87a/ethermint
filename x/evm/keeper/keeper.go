@@ -5,7 +5,6 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store/prefix"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
@@ -19,7 +18,6 @@ import (
 	ethermint "github.com/evmos/ethermint/types"
 	"github.com/evmos/ethermint/x/evm/statedb"
 	"github.com/evmos/ethermint/x/evm/types"
-	evm "github.com/evmos/ethermint/x/evm/vm"
 )
 
 // Keeper grants access to the EVM module state and implements the go-ethereum StateDB interface.
@@ -31,10 +29,10 @@ type Keeper struct {
 	// - storing account's Code
 	// - storing transaction Logs
 	// - storing Bloom filters by block height. Needed for the Web3 API.
-	storeKey storetypes.StoreKey
+	storeKey sdk.StoreKey
 
 	// key to access the transient store, which is reset on every block during Commit
-	transientKey storetypes.StoreKey
+	transientKey sdk.StoreKey
 
 	// module specific parameter space that can be configured through governance
 	paramSpace paramtypes.Subspace
@@ -55,25 +53,14 @@ type Keeper struct {
 
 	// EVM Hooks for tx post-processing
 	hooks types.EvmHooks
-
-	// custom stateless precompiled smart contracts
-	customPrecompiles evm.PrecompiledContracts
-
-	// evm constructor function
-	evmConstructor evm.Constructor
 }
 
 // NewKeeper generates new evm module keeper
 func NewKeeper(
 	cdc codec.BinaryCodec,
-	storeKey, transientKey storetypes.StoreKey,
-	paramSpace paramtypes.Subspace,
-	ak types.AccountKeeper,
-	bankKeeper types.BankKeeper,
-	sk types.StakingKeeper,
+	storeKey, transientKey sdk.StoreKey, paramSpace paramtypes.Subspace,
+	ak types.AccountKeeper, bankKeeper types.BankKeeper, sk types.StakingKeeper,
 	fmk types.FeeMarketKeeper,
-	customPrecompiles evm.PrecompiledContracts,
-	evmConstructor evm.Constructor,
 	tracer string,
 ) *Keeper {
 	// ensure evm module account is set
@@ -88,17 +75,15 @@ func NewKeeper(
 
 	// NOTE: we pass in the parameter space to the CommitStateDB in order to use custom denominations for the EVM operations
 	return &Keeper{
-		cdc:               cdc,
-		paramSpace:        paramSpace,
-		accountKeeper:     ak,
-		bankKeeper:        bankKeeper,
-		stakingKeeper:     sk,
-		feeMarketKeeper:   fmk,
-		storeKey:          storeKey,
-		transientKey:      transientKey,
-		customPrecompiles: customPrecompiles,
-		evmConstructor:    evmConstructor,
-		tracer:            tracer,
+		cdc:             cdc,
+		paramSpace:      paramSpace,
+		accountKeeper:   ak,
+		bankKeeper:      bankKeeper,
+		stakingKeeper:   sk,
+		feeMarketKeeper: fmk,
+		storeKey:        storeKey,
+		transientKey:    transientKey,
+		tracer:          tracer,
 	}
 }
 
@@ -312,11 +297,7 @@ func (k *Keeper) GetBalance(ctx sdk.Context, addr common.Address) *big.Int {
 // - `0`: london hardfork enabled but feemarket is not enabled.
 // - `n`: both london hardfork and feemarket are enabled.
 func (k Keeper) GetBaseFee(ctx sdk.Context, ethCfg *params.ChainConfig) *big.Int {
-	return k.getBaseFee(ctx, types.IsLondon(ethCfg, ctx.BlockHeight()))
-}
-
-func (k Keeper) getBaseFee(ctx sdk.Context, london bool) *big.Int {
-	if !london {
+	if !types.IsLondon(ethCfg, ctx.BlockHeight()) {
 		return nil
 	}
 	baseFee := k.feeMarketKeeper.GetBaseFee(ctx)
@@ -330,10 +311,6 @@ func (k Keeper) getBaseFee(ctx sdk.Context, london bool) *big.Int {
 // GetMinGasMultiplier returns the MinGasMultiplier param from the fee market module
 func (k Keeper) GetMinGasMultiplier(ctx sdk.Context) sdk.Dec {
 	fmkParmas := k.feeMarketKeeper.GetParams(ctx)
-	if fmkParmas.MinGasMultiplier.IsNil() {
-		// in case we are executing eth_call on a legacy block, returns a zero value.
-		return sdk.ZeroDec()
-	}
 	return fmkParmas.MinGasMultiplier
 }
 

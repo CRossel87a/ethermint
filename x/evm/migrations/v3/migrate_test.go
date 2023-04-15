@@ -2,9 +2,8 @@ package v3_test
 
 import (
 	"fmt"
-	"testing"
-
 	v3 "github.com/evmos/ethermint/x/evm/migrations/v3"
+	"testing"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,7 +24,7 @@ func TestMigrateStore(t *testing.T) {
 	tEvmKey := sdk.NewTransientStoreKey(fmt.Sprintf("%s_test", types.StoreKey))
 	ctx := testutil.DefaultContext(evmKey, tEvmKey)
 	paramstore := paramtypes.NewSubspace(
-		encCfg.Codec, encCfg.Amino, evmKey, tEvmKey, "evm",
+		encCfg.Marshaler, encCfg.Amino, evmKey, tEvmKey, "evm",
 	).WithKeyTable(v3types.ParamKeyTable())
 
 	params := v3types.DefaultParams()
@@ -40,7 +39,7 @@ func TestMigrateStore(t *testing.T) {
 	require.NotNil(t, preMigrationConfig.MergeForkBlock)
 
 	paramstore = paramtypes.NewSubspace(
-		encCfg.Codec, encCfg.Amino, evmKey, tEvmKey, "evm",
+		encCfg.Marshaler, encCfg.Amino, evmKey, tEvmKey, "evm",
 	).WithKeyTable(types.ParamKeyTable())
 	err := v3.MigrateStore(ctx, &paramstore)
 	require.NoError(t, err)

@@ -1,7 +1,6 @@
 package ante_test
 
 import (
-	"math"
 	"math/big"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -221,61 +220,41 @@ func (suite AnteTestSuite) TestEthGasConsumeDecorator() {
 	tx := evmtypes.NewTxContract(suite.app.EvmKeeper.ChainID(), 1, big.NewInt(10), txGasLimit, big.NewInt(1), nil, nil, nil, nil)
 	tx.From = addr.Hex()
 
-	ethCfg := suite.app.EvmKeeper.GetParams(suite.ctx).
-		ChainConfig.EthereumConfig(suite.app.EvmKeeper.ChainID())
-	baseFee := suite.app.EvmKeeper.GetBaseFee(suite.ctx, ethCfg)
-	suite.Require().Equal(int64(1000000000), baseFee.Int64())
-
-	gasPrice := new(big.Int).Add(baseFee, evmtypes.DefaultPriorityReduction.BigInt())
-
 	tx2GasLimit := uint64(1000000)
-	tx2 := evmtypes.NewTxContract(suite.app.EvmKeeper.ChainID(), 1, big.NewInt(10), tx2GasLimit, gasPrice, nil, nil, nil, &ethtypes.AccessList{{Address: addr, StorageKeys: nil}})
+	tx2 := evmtypes.NewTxContract(suite.app.EvmKeeper.ChainID(), 1, big.NewInt(10), tx2GasLimit, big.NewInt(1), nil, nil, nil, &ethtypes.AccessList{{Address: addr, StorageKeys: nil}})
 	tx2.From = addr.Hex()
-	tx2Priority := int64(1)
-
-	dynamicFeeTx := evmtypes.NewTxContract(suite.app.EvmKeeper.ChainID(), 1, big.NewInt(10), tx2GasLimit,
-		nil, // gasPrice
-		new(big.Int).Add(baseFee, big.NewInt(evmtypes.DefaultPriorityReduction.Int64()*2)), // gasFeeCap
-		evmtypes.DefaultPriorityReduction.BigInt(),                                         // gasTipCap
-		nil, &ethtypes.AccessList{{Address: addr, StorageKeys: nil}})
-	dynamicFeeTx.From = addr.Hex()
-	dynamicFeeTxPriority := int64(1)
 
 	var vmdb *statedb.StateDB
 
 	testCases := []struct {
-		name        string
-		tx          sdk.Tx
-		gasLimit    uint64
-		malleate    func()
-		expPass     bool
-		expPanic    bool
-		expPriority int64
+		name     string
+		tx       sdk.Tx
+		gasLimit uint64
+		malleate func()
+		expPass  bool
+		expPanic bool
 	}{
-		{"invalid transaction type", &invalidTx{}, math.MaxUint64, func() {}, false, false, 0},
+		{"invalid transaction type", &invalidTx{}, 0, func() {}, false, false},
 		{
 			"sender not found",
 			evmtypes.NewTxContract(suite.app.EvmKeeper.ChainID(), 1, big.NewInt(10), 1000, big.NewInt(1), nil, nil, nil, nil),
-			math.MaxUint64,
+			0,
 			func() {},
 			false, false,
-			0,
 		},
 		{
 			"gas limit too low",
 			tx,
-			math.MaxUint64,
+			0,
 			func() {},
 			false, false,
-			0,
 		},
 		{
 			"not enough balance for fees",
 			tx2,
-			math.MaxUint64,
+			0,
 			func() {},
 			false, false,
-			0,
 		},
 		{
 			"not enough tx gas",
@@ -285,7 +264,6 @@ func (suite AnteTestSuite) TestEthGasConsumeDecorator() {
 				vmdb.AddBalance(addr, big.NewInt(1000000))
 			},
 			false, true,
-			0,
 		},
 		{
 			"not enough block gas",
@@ -293,32 +271,21 @@ func (suite AnteTestSuite) TestEthGasConsumeDecorator() {
 			0,
 			func() {
 				vmdb.AddBalance(addr, big.NewInt(1000000))
+
 				suite.ctx = suite.ctx.WithBlockGasMeter(sdk.NewGasMeter(1))
 			},
 			false, true,
-			0,
 		},
 		{
-			"success - legacy tx",
+			"success",
 			tx2,
 			tx2GasLimit, // it's capped
 			func() {
-				vmdb.AddBalance(addr, big.NewInt(1001000000000000))
+				vmdb.AddBalance(addr, big.NewInt(1000000))
+
 				suite.ctx = suite.ctx.WithBlockGasMeter(sdk.NewGasMeter(10000000000000000000))
 			},
 			true, false,
-			tx2Priority,
-		},
-		{
-			"success - dynamic fee tx",
-			dynamicFeeTx,
-			tx2GasLimit, // it's capped
-			func() {
-				vmdb.AddBalance(addr, big.NewInt(1001000000000000))
-				suite.ctx = suite.ctx.WithBlockGasMeter(sdk.NewGasMeter(10000000000000000000))
-			},
-			true, false,
-			dynamicFeeTxPriority,
 		},
 	}
 
@@ -338,7 +305,6 @@ func (suite AnteTestSuite) TestEthGasConsumeDecorator() {
 			ctx, err := dec.AnteHandle(suite.ctx.WithIsCheckTx(true).WithGasMeter(sdk.NewInfiniteGasMeter()), tc.tx, false, NextFn)
 			if tc.expPass {
 				suite.Require().NoError(err)
-				suite.Require().Equal(tc.expPriority, ctx.Priority())
 			} else {
 				suite.Require().Error(err)
 			}

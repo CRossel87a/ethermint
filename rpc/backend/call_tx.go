@@ -8,7 +8,6 @@ import (
 	"math/big"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -197,6 +196,7 @@ func (b *Backend) SetTxDefaults(args evmtypes.TransactionArgs) (evmtypes.Transac
 			if args.MaxFeePerGas.ToInt().Cmp(args.MaxPriorityFeePerGas.ToInt()) < 0 {
 				return args, fmt.Errorf("maxFeePerGas (%v) < maxPriorityFeePerGas (%v)", args.MaxFeePerGas, args.MaxPriorityFeePerGas)
 			}
+
 		} else {
 			if args.MaxFeePerGas != nil || args.MaxPriorityFeePerGas != nil {
 				return args, errors.New("maxFeePerGas or maxPriorityFeePerGas specified but london is not active yet")
@@ -269,8 +269,6 @@ func (b *Backend) SetTxDefaults(args evmtypes.TransactionArgs) (evmtypes.Transac
 			Value:                args.Value,
 			Data:                 input,
 			AccessList:           args.AccessList,
-			ChainID:              args.ChainID,
-			Nonce:                args.Nonce,
 		}
 
 		blockNr := rpctypes.NewBlockNumber(big.NewInt(0))
@@ -301,17 +299,9 @@ func (b *Backend) EstimateGas(args evmtypes.TransactionArgs, blockNrOptional *rp
 		return 0, err
 	}
 
-	header, err := b.TendermintBlockByNumber(blockNr)
-	if err != nil {
-		// the error message imitates geth behavior
-		return 0, errors.New("header not found")
-	}
-
 	req := evmtypes.EthCallRequest{
-		Args:            bz,
-		GasCap:          b.RPCGasCap(),
-		ProposerAddress: sdk.ConsAddress(header.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		Args:   bz,
+		GasCap: b.RPCGasCap(),
 	}
 
 	// From ContextWithHeight: if the provided height is 0,
@@ -333,17 +323,10 @@ func (b *Backend) DoCall(
 	if err != nil {
 		return nil, err
 	}
-	header, err := b.TendermintBlockByNumber(blockNr)
-	if err != nil {
-		// the error message imitates geth behavior
-		return nil, errors.New("header not found")
-	}
 
 	req := evmtypes.EthCallRequest{
-		Args:            bz,
-		GasCap:          b.RPCGasCap(),
-		ProposerAddress: sdk.ConsAddress(header.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		Args:   bz,
+		GasCap: b.RPCGasCap(),
 	}
 
 	// From ContextWithHeight: if the provided height is 0,
@@ -369,10 +352,6 @@ func (b *Backend) DoCall(
 	if err != nil {
 		return nil, err
 	}
-	length := len(res.Ret)
-	if length > int(b.cfg.JSONRPC.ReturnDataLimit) && b.cfg.JSONRPC.ReturnDataLimit != 0 {
-		return nil, fmt.Errorf("call retuned result on length %d exceeding limit %d", length, b.cfg.JSONRPC.ReturnDataLimit)
-	}
 
 	if res.Failed() {
 		if res.VmError != vm.ErrExecutionReverted.Error() {
@@ -382,33 +361,4 @@ func (b *Backend) DoCall(
 	}
 
 	return res, nil
-}
-
-// GasPrice returns the current gas price based on Ethermint's gas price oracle.
-func (b *Backend) GasPrice() (*hexutil.Big, error) {
-	var (
-		result *big.Int
-		err    error
-	)
-	if head := b.CurrentHeader(); head.BaseFee != nil {
-		result, err = b.SuggestGasTipCap(head.BaseFee)
-		if err != nil {
-			return nil, err
-		}
-		result = result.Add(result, head.BaseFee)
-	} else {
-		result = big.NewInt(b.RPCMinGasPrice())
-	}
-
-	// return at least GlobalMinGasPrice from FeeMarket module
-	minGasPrice, err := b.GlobalMinGasPrice()
-	if err != nil {
-		return nil, err
-	}
-	minGasPriceInt := minGasPrice.TruncateInt().BigInt()
-	if result.Cmp(minGasPriceInt) < 0 {
-		result = minGasPriceInt
-	}
-
-	return (*hexutil.Big)(result), nil
 }

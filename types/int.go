@@ -5,8 +5,7 @@ import (
 	math "math"
 	"math/big"
 
-	sdkmath "cosmossdk.io/math"
-
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
@@ -22,11 +21,11 @@ func SafeInt64(value uint64) (int64, error) {
 }
 
 // SafeNewIntFromBigInt constructs Int from big.Int, return error if more than 256bits
-func SafeNewIntFromBigInt(i *big.Int) (sdkmath.Int, error) {
+func SafeNewIntFromBigInt(i *big.Int) (sdk.Int, error) {
 	if !IsValidInt256(i) {
-		return sdkmath.NewInt(0), fmt.Errorf("big int out of bound: %s", i)
+		return sdk.NewInt(0), fmt.Errorf("big int out of bound: %s", i)
 	}
-	return sdkmath.NewIntFromBigInt(i), nil
+	return sdk.NewIntFromBigInt(i), nil
 }
 
 // IsValidInt256 check the bound of 256 bit number

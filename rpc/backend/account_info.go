@@ -7,7 +7,6 @@ import (
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -18,7 +17,7 @@ import (
 
 // GetCode returns the contract code at the given address and block number.
 func (b *Backend) GetCode(address common.Address, blockNrOrHash rpctypes.BlockNumberOrHash) (hexutil.Bytes, error) {
-	blockNum, err := b.BlockNumberFromTendermint(blockNrOrHash)
+	blockNum, err := b.GetBlockNumber(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -37,13 +36,13 @@ func (b *Backend) GetCode(address common.Address, blockNrOrHash rpctypes.BlockNu
 
 // GetProof returns an account object with proof and any storage proofs
 func (b *Backend) GetProof(address common.Address, storageKeys []string, blockNrOrHash rpctypes.BlockNumberOrHash) (*rpctypes.AccountResult, error) {
-	blockNum, err := b.BlockNumberFromTendermint(blockNrOrHash)
+	blockNum, err := b.GetBlockNumber(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
 
 	height := blockNum.Int64()
-	_, err = b.TendermintBlockByNumber(blockNum)
+	_, err = b.GetTendermintBlockByNumber(blockNum)
 	if err != nil {
 		// the error message imitates geth behavior
 		return nil, errors.New("header not found")
@@ -76,10 +75,16 @@ func (b *Backend) GetProof(address common.Address, storageKeys []string, blockNr
 			return nil, err
 		}
 
+		// check for proof
+		var proofStr string
+		if proof != nil {
+			proofStr = proof.String()
+		}
+
 		storageProofs[i] = rpctypes.StorageResult{
 			Key:   key,
 			Value: (*hexutil.Big)(new(big.Int).SetBytes(valueBz)),
-			Proof: GetHexProofs(proof),
+			Proof: []string{proofStr},
 		}
 	}
 
@@ -100,6 +105,12 @@ func (b *Backend) GetProof(address common.Address, storageKeys []string, blockNr
 		return nil, err
 	}
 
+	// check for proof
+	var accProofStr string
+	if proof != nil {
+		accProofStr = proof.String()
+	}
+
 	balance, ok := sdkmath.NewIntFromString(res.Balance)
 	if !ok {
 		return nil, errors.New("invalid balance")
@@ -107,7 +118,7 @@ func (b *Backend) GetProof(address common.Address, storageKeys []string, blockNr
 
 	return &rpctypes.AccountResult{
 		Address:      address,
-		AccountProof: GetHexProofs(proof),
+		AccountProof: []string{accProofStr},
 		Balance:      (*hexutil.Big)(balance.BigInt()),
 		CodeHash:     common.HexToHash(res.CodeHash),
 		Nonce:        hexutil.Uint64(res.Nonce),
@@ -118,7 +129,7 @@ func (b *Backend) GetProof(address common.Address, storageKeys []string, blockNr
 
 // GetStorageAt returns the contract storage at the given address, block number, and key.
 func (b *Backend) GetStorageAt(address common.Address, key string, blockNrOrHash rpctypes.BlockNumberOrHash) (hexutil.Bytes, error) {
-	blockNum, err := b.BlockNumberFromTendermint(blockNrOrHash)
+	blockNum, err := b.GetBlockNumber(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +150,7 @@ func (b *Backend) GetStorageAt(address common.Address, key string, blockNrOrHash
 
 // GetBalance returns the provided account's balance up to the provided block number.
 func (b *Backend) GetBalance(address common.Address, blockNrOrHash rpctypes.BlockNumberOrHash) (*hexutil.Big, error) {
-	blockNum, err := b.BlockNumberFromTendermint(blockNrOrHash)
+	blockNum, err := b.GetBlockNumber(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +159,7 @@ func (b *Backend) GetBalance(address common.Address, blockNrOrHash rpctypes.Bloc
 		Address: address.String(),
 	}
 
-	_, err = b.TendermintBlockByNumber(blockNum)
+	_, err = b.GetTendermintBlockByNumber(blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -173,27 +184,14 @@ func (b *Backend) GetBalance(address common.Address, blockNrOrHash rpctypes.Bloc
 
 // GetTransactionCount returns the number of transactions at the given address up to the given block number.
 func (b *Backend) GetTransactionCount(address common.Address, blockNum rpctypes.BlockNumber) (*hexutil.Uint64, error) {
-	n := hexutil.Uint64(0)
-	bn, err := b.BlockNumber()
-	if err != nil {
-		return &n, err
-	}
-	height := blockNum.Int64()
-	currentHeight := int64(bn)
-	if height > currentHeight {
-		return &n, sdkerrors.Wrapf(
-			sdkerrors.ErrInvalidHeight,
-			"cannot query with height in the future (current: %d, queried: %d); please provide a valid height",
-			currentHeight, height,
-		)
-	}
 	// Get nonce (sequence) from account
 	from := sdk.AccAddress(address.Bytes())
 	accRet := b.clientCtx.AccountRetriever
 
-	err = accRet.EnsureExists(b.clientCtx, from)
+	err := accRet.EnsureExists(b.clientCtx, from)
 	if err != nil {
 		// account doesn't exist yet, return 0
+		n := hexutil.Uint64(0)
 		return &n, nil
 	}
 
@@ -203,6 +201,6 @@ func (b *Backend) GetTransactionCount(address common.Address, blockNum rpctypes.
 		return nil, err
 	}
 
-	n = hexutil.Uint64(nonce)
+	n := hexutil.Uint64(nonce)
 	return &n, nil
 }

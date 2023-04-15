@@ -89,7 +89,3 @@ func (g *infiniteGasMeterWithLimit) IsOutOfGas() bool {
 func (g *infiniteGasMeterWithLimit) String() string {
 	return fmt.Sprintf("InfiniteGasMeter:\n  consumed: %d", g.consumed)
 }
-
-func (g *infiniteGasMeterWithLimit) GasRemaining() sdk.Gas {
-	return math.MaxUint64
-}

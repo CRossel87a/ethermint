@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	rpctypes "github.com/evmos/ethermint/rpc/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	"github.com/pkg/errors"
@@ -28,7 +26,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 		return nil, errors.New("genesis is not traceable")
 	}
 
-	blk, err := b.TendermintBlockByNumber(rpctypes.BlockNumber(transaction.Height))
+	blk, err := b.GetTendermintBlockByNumber(rpctypes.BlockNumber(transaction.Height))
 	if err != nil {
 		b.logger.Debug("block not found", "height", transaction.Height)
 		return nil, err
@@ -79,13 +77,11 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 	}
 
 	traceTxRequest := evmtypes.QueryTraceTxRequest{
-		Msg:             ethMessage,
-		Predecessors:    predecessors,
-		BlockNumber:     blk.Block.Height,
-		BlockTime:       blk.Block.Time,
-		BlockHash:       common.Bytes2Hex(blk.BlockID.Hash),
-		ProposerAddress: sdk.ConsAddress(blk.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		Msg:          ethMessage,
+		Predecessors: predecessors,
+		BlockNumber:  blk.Block.Height,
+		BlockTime:    blk.Block.Time,
+		BlockHash:    common.Bytes2Hex(blk.BlockID.Hash),
 	}
 
 	if config != nil {
@@ -117,10 +113,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 // traceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
-func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
-	config *evmtypes.TraceConfig,
-	block *tmrpctypes.ResultBlock,
-) ([]*evmtypes.TxTraceResult, error) {
+func (b *Backend) TraceBlock(height rpctypes.BlockNumber, config *evmtypes.TraceConfig, block *tmrpctypes.ResultBlock) ([]*evmtypes.TxTraceResult, error) {
 	txs := block.Block.Txs
 	txsLength := len(txs)
 
@@ -128,19 +121,11 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
 		// If there are no transactions return empty array
 		return []*evmtypes.TxTraceResult{}, nil
 	}
-	blockRes, err := b.TendermintBlockResultByNumber(&block.Block.Height)
-	if err != nil {
-		b.logger.Debug("block result not found", "height", block.Block.Height, "error", err.Error())
-		return nil, nil
-	}
+
 	txDecoder := b.clientCtx.TxConfig.TxDecoder()
 
 	var txsMessages []*evmtypes.MsgEthereumTx
 	for i, tx := range txs {
-		if !rpctypes.TxSuccessOrExceedsBlockGasLimit(blockRes.TxsResults[i]) {
-			b.logger.Debug("invalid tx result code", "cosmos-hash", hexutil.Encode(tx.Hash()))
-			continue
-		}
 		decodedTx, err := txDecoder(tx)
 		if err != nil {
 			b.logger.Error("failed to decode transaction", "hash", txs[i].Hash(), "error", err.Error())
@@ -166,13 +151,11 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
 	ctxWithHeight := rpctypes.ContextWithHeight(int64(contextHeight))
 
 	traceBlockRequest := &evmtypes.QueryTraceBlockRequest{
-		Txs:             txsMessages,
-		TraceConfig:     config,
-		BlockNumber:     block.Block.Height,
-		BlockTime:       block.Block.Time,
-		BlockHash:       common.Bytes2Hex(block.BlockID.Hash),
-		ProposerAddress: sdk.ConsAddress(block.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		Txs:         txsMessages,
+		TraceConfig: config,
+		BlockNumber: block.Block.Height,
+		BlockTime:   block.Block.Time,
+		BlockHash:   common.Bytes2Hex(block.BlockID.Hash),
 	}
 
 	res, err := b.queryClient.TraceBlock(ctxWithHeight, traceBlockRequest)

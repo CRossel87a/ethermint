@@ -2,7 +2,6 @@ package types
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -10,14 +9,8 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 )
-
-// DefaultPriorityReduction is the default amount of price values required for 1 unit of priority.
-// Because priority is `int64` while price is `big.Int`, it's necessary to scale down the range to keep it more pratical.
-// The default value is the same as the `sdk.DefaultPowerReduction`.
-var DefaultPriorityReduction = sdk.DefaultPowerReduction
 
 var EmptyCodeHash = crypto.Keccak256(nil)
 
@@ -28,12 +21,15 @@ func DecodeTxResponse(in []byte) (*MsgEthereumTxResponse, error) {
 		return nil, err
 	}
 
-	if len(txMsgData.MsgResponses) == 0 {
+	data := txMsgData.GetData()
+	if len(data) == 0 {
 		return &MsgEthereumTxResponse{}, nil
 	}
 
 	var res MsgEthereumTxResponse
-	if err := proto.Unmarshal(txMsgData.MsgResponses[0].Value, &res); err != nil {
+
+	err := proto.Unmarshal(data[0].GetData(), &res)
+	if err != nil {
 		return nil, sdkerrors.Wrap(err, "failed to unmarshal tx response message data")
 	}
 
@@ -45,7 +41,7 @@ func EncodeTransactionLogs(res *TransactionLogs) ([]byte, error) {
 	return proto.Marshal(res)
 }
 
-// DecodeTransactionLogs decodes an protobuf-encoded byte slice into TransactionLogs
+// DecodeTxResponse decodes an protobuf-encoded byte slice into TransactionLogs
 func DecodeTransactionLogs(data []byte) (TransactionLogs, error) {
 	var logs TransactionLogs
 	err := proto.Unmarshal(data, &logs)
@@ -94,10 +90,4 @@ func BinSearch(lo, hi uint64, executable func(uint64) (bool, *MsgEthereumTxRespo
 		}
 	}
 	return hi, nil
-}
-
-// EffectiveGasPrice compute the effective gas price based on eip-1159 rules
-// `effectiveGasPrice = min(baseFee + tipCap, feeCap)`
-func EffectiveGasPrice(baseFee *big.Int, feeCap *big.Int, tipCap *big.Int) *big.Int {
-	return math.BigMin(new(big.Int).Add(tipCap, baseFee), feeCap)
 }

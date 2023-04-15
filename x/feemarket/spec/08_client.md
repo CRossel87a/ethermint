@@ -20,13 +20,13 @@ ethermintd query feemarket --help
 The `base-fee` command allows users to query the block base fee by height.
 
 ```
-ethermintd query feemarket base-fee [flags]
+ethermintd query feemarket base-fee [height] [flags]
 ```
 
 Example:
 
 ```
-ethermintd query feemarket base-fee ...
+ethermintd query feemarket base-fee 5...
 ```
 
 Example Output:
@@ -40,13 +40,13 @@ base_fee: "512908936"
 The `block-gas` command allows users to query the block gas by height.
 
 ```
-ethermintd query feemarket block-gas [flags]
+ethermintd query feemarket block-gas [height] [flags]
 ```
 
 Example:
 
 ```
-ethermintd query feemarket block-gas ...
+ethermintd query feemarket block-gas 5...
 ```
 
 Example Output:

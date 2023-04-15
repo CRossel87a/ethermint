@@ -15,18 +15,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/version"
 
-	tmcmd "github.com/tendermint/tendermint/cmd/cometbft/commands"
+	tmcmd "github.com/tendermint/tendermint/cmd/tendermint/commands"
 	tmlog "github.com/tendermint/tendermint/libs/log"
 	rpcclient "github.com/tendermint/tendermint/rpc/jsonrpc/client"
 )
 
 // AddCommands adds server commands
-func AddCommands(
-	rootCmd *cobra.Command,
-	opts StartOptions,
-	appExport types.AppExporter,
-	addStartFlags types.ModuleInitFlags,
-) {
+func AddCommands(rootCmd *cobra.Command, defaultNodeHome string, appCreator types.AppCreator, appExport types.AppExporter, addStartFlags types.ModuleInitFlags) {
 	tendermintCmd := &cobra.Command{
 		Use:   "tendermint",
 		Short: "Tendermint subcommands",
@@ -41,15 +36,15 @@ func AddCommands(
 		tmcmd.ResetStateCmd,
 	)
 
-	startCmd := StartCmd(opts)
+	startCmd := StartCmd(appCreator, defaultNodeHome)
 	addStartFlags(startCmd)
 
 	rootCmd.AddCommand(
 		startCmd,
 		tendermintCmd,
-		sdkserver.ExportCmd(appExport, opts.DefaultNodeHome),
+		sdkserver.ExportCmd(appExport, defaultNodeHome),
 		version.NewVersionCommand(),
-		sdkserver.NewRollbackCmd(opts.AppCreator, opts.DefaultNodeHome),
+		sdkserver.NewRollbackCmd(appCreator, defaultNodeHome),
 
 		// custom tx indexer command
 		NewIndexTxCmd(),
@@ -91,6 +86,7 @@ func MountGRPCWebServices(
 	logger tmlog.Logger,
 ) {
 	for _, res := range grpcResources {
+
 		logger.Info("[GRPC Web] HTTP POST mounted", "resource", res)
 
 		s := router.Methods("POST").Subrouter()

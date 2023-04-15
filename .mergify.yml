@@ -23,19 +23,19 @@ pull_request_rules:
       backport:
         branches:
           - main
-  - name: backport patches to v0.20.x branch
+  - name: backport patches to v0.17.x branch
     conditions:
       - base=main
-      - label=backport/0.20.x
+      - label=backport/0.17.x
     actions:
       backport:
         branches:
-          - release/v0.20.x
-  - name: backport patches to v0.19.x branch
+          - release/v0.17.x
+  - name: backport patches to v0.16.x branch
     conditions:
       - base=main
-      - label=backport/0.19.x
+      - label=backport/0.16.x
     actions:
       backport:
         branches:
-          - release/v0.19.x
+          - release/v0.16.x

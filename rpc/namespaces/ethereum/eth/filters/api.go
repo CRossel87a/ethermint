@@ -39,8 +39,8 @@ type Backend interface {
 	GetBlockByNumber(blockNum types.BlockNumber, fullTx bool) (map[string]interface{}, error)
 	HeaderByNumber(blockNum types.BlockNumber) (*ethtypes.Header, error)
 	HeaderByHash(blockHash common.Hash) (*ethtypes.Header, error)
-	TendermintBlockByHash(hash common.Hash) (*coretypes.ResultBlock, error)
-	TendermintBlockResultByNumber(height *int64) (*coretypes.ResultBlockResults, error)
+	GetTendermintBlockByHash(hash common.Hash) (*coretypes.ResultBlock, error)
+	GetTendermintBlockResultByNumber(height *int64) (*coretypes.ResultBlockResults, error)
 	GetLogs(blockHash common.Hash) ([][]*ethtypes.Log, error)
 	GetLogsByHeight(*int64) ([][]*ethtypes.Log, error)
 	BlockBloom(blockRes *coretypes.ResultBlockResults) (ethtypes.Bloom, error)
@@ -136,12 +136,7 @@ func (api *PublicFilterAPI) NewPendingTransactionFilter() rpc.ID {
 		return rpc.ID(fmt.Sprintf("error creating pending tx filter: %s", err.Error()))
 	}
 
-	api.filters[pendingTxSub.ID()] = &filter{
-		typ:      filters.PendingTransactionsSubscription,
-		deadline: time.NewTimer(deadline),
-		hashes:   make([]common.Hash, 0),
-		s:        pendingTxSub,
-	}
+	api.filters[pendingTxSub.ID()] = &filter{typ: filters.PendingTransactionsSubscription, deadline: time.NewTimer(deadline), hashes: make([]common.Hash, 0), s: pendingTxSub}
 
 	go func(txsCh <-chan coretypes.ResultEvent, errCh <-chan error) {
 		defer cancelSubs()
@@ -292,9 +287,12 @@ func (api *PublicFilterAPI) NewBlockFilter() rpc.ID {
 					continue
 				}
 
+				baseFee := types.BaseFeeFromEvents(data.ResultBeginBlock.Events)
+
+				header := types.EthHeaderFromTendermint(data.Header, ethtypes.Bloom{}, baseFee)
 				api.filtersMu.Lock()
 				if f, found := api.filters[headerSub.ID()]; found {
-					f.hashes = append(f.hashes, common.BytesToHash(data.Header.Hash()))
+					f.hashes = append(f.hashes, header.Hash())
 				}
 				api.filtersMu.Unlock()
 			case <-errCh:
@@ -402,7 +400,6 @@ func (api *PublicFilterAPI) Logs(ctx context.Context, crit filters.FilterCriteri
 
 				txResponse, err := evmtypes.DecodeTxResponse(dataTx.TxResult.Result.Data)
 				if err != nil {
-					api.logger.Error("fail to decode tx response", "error", err)
 					return
 				}
 
@@ -457,13 +454,7 @@ func (api *PublicFilterAPI) NewFilter(criteria filters.FilterCriteria) (rpc.ID, 
 
 	filterID = logsSub.ID()
 
-	api.filters[filterID] = &filter{
-		typ:      filters.LogsSubscription,
-		crit:     criteria,
-		deadline: time.NewTimer(deadline),
-		hashes:   []common.Hash{},
-		s:        logsSub,
-	}
+	api.filters[filterID] = &filter{typ: filters.LogsSubscription, crit: criteria, deadline: time.NewTimer(deadline), hashes: []common.Hash{}, s: logsSub}
 
 	go func(eventCh <-chan coretypes.ResultEvent) {
 		defer cancelSubs()
@@ -485,7 +476,6 @@ func (api *PublicFilterAPI) NewFilter(criteria filters.FilterCriteria) (rpc.ID, 
 
 				txResponse, err := evmtypes.DecodeTxResponse(dataTx.TxResult.Result.Data)
 				if err != nil {
-					api.logger.Error("fail to decode tx response", "error", err)
 					return
 				}
 

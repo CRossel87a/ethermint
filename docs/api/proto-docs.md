@@ -79,9 +79,6 @@
 - [ethermint/types/v1/account.proto](#ethermint/types/v1/account.proto)
     - [EthAccount](#ethermint.types.v1.EthAccount)
   
-- [ethermint/types/v1/dynamic_fee.proto](#ethermint/types/v1/dynamic_fee.proto)
-    - [ExtensionOptionDynamicFeeTx](#ethermint.types.v1.ExtensionOptionDynamicFeeTx)
-  
 - [ethermint/types/v1/indexer.proto](#ethermint/types/v1/indexer.proto)
     - [TxResult](#ethermint.types.v1.TxResult)
   
@@ -562,8 +559,6 @@ EthCallRequest defines EthCall request
 | ----- | ---- | ----- | ----------- |
 | `args` | [bytes](#bytes) |  | same json format as the json rpc api. |
 | `gas_cap` | [uint64](#uint64) |  | the default gas cap to be used |
-| `proposer_address` | [bytes](#bytes) |  | the proposer of the requested block |
-| `chain_id` | [int64](#int64) |  | the eip155 chain id parsed from the requested block header |
 
 
 
@@ -793,8 +788,6 @@ QueryTraceBlockRequest defines TraceTx request
 | `block_number` | [int64](#int64) |  | block number |
 | `block_hash` | [string](#string) |  | block hex hash |
 | `block_time` | [google.protobuf.Timestamp](#google.protobuf.Timestamp) |  | block time |
-| `proposer_address` | [bytes](#bytes) |  | the proposer of the requested block |
-| `chain_id` | [int64](#int64) |  | the eip155 chain id parsed from the requested block header |
 
 
 
@@ -830,8 +823,6 @@ QueryTraceTxRequest defines TraceTx request
 | `block_number` | [int64](#int64) |  | block number of requested transaction |
 | `block_hash` | [string](#string) |  | block hex hash of requested transaction |
 | `block_time` | [google.protobuf.Timestamp](#google.protobuf.Timestamp) |  | block time of requested transaction |
-| `proposer_address` | [bytes](#bytes) |  | the proposer of the requested block |
-| `chain_id` | [int64](#int64) |  | the eip155 chain id parsed from the requested block header |
 
 
 
@@ -1141,37 +1132,6 @@ authtypes.BaseAccount type. It is compatible with the auth AccountKeeper.
 | ----- | ---- | ----- | ----------- |
 | `base_account` | [cosmos.auth.v1beta1.BaseAccount](#cosmos.auth.v1beta1.BaseAccount) |  |  |
 | `code_hash` | [string](#string) |  |  |
-
-
-
-
-
- <!-- end messages -->
-
- <!-- end enums -->
-
- <!-- end HasExtensions -->
-
- <!-- end services -->
-
-
-
-<a name="ethermint/types/v1/dynamic_fee.proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## ethermint/types/v1/dynamic_fee.proto
-
-
-
-<a name="ethermint.types.v1.ExtensionOptionDynamicFeeTx"></a>
-
-### ExtensionOptionDynamicFeeTx
-ExtensionOptionDynamicFeeTx is an extension option that specify the maxPrioPrice for cosmos tx
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| `max_priority_price` | [string](#string) |  | the same as `max_priority_fee_per_gas` in eip-1559 spec |
 
 
 

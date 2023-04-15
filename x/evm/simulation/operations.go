@@ -7,8 +7,6 @@ import (
 	"math/rand"
 	"time"
 
-	sdkmath "cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -115,8 +113,7 @@ func SimulateEthSimpleTransfer(ak types.AccountKeeper, k *keeper.Keeper) simtype
 }
 
 // SimulateEthCreateContract simulate create an ERC20 contract.
-// It makes operationSimulateEthCallContract the future operations of SimulateEthCreateContract
-// to ensure valid contract call.
+// It makes operationSimulateEthCallContract the future operations of SimulateEthCreateContract to ensure valid contract call.
 func SimulateEthCreateContract(ak types.AccountKeeper, k *keeper.Keeper) simtypes.Operation {
 	return func(
 		r *rand.Rand, bapp *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string,
@@ -126,7 +123,7 @@ func SimulateEthCreateContract(ak types.AccountKeeper, k *keeper.Keeper) simtype
 		from := common.BytesToAddress(simAccount.Address)
 		nonce := k.GetNonce(ctx, from)
 
-		ctorArgs, err := types.ERC20Contract.ABI.Pack("", from, sdkmath.NewIntWithDecimal(1000, 18).BigInt())
+		ctorArgs, err := types.ERC20Contract.ABI.Pack("", from, sdk.NewIntWithDecimal(1000, 18).BigInt())
 		if err != nil {
 			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "can not pack owner and supply"), nil, err
 		}
@@ -195,7 +192,7 @@ func SimulateEthTx(
 		return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "can not sign ethereum tx"), nil, err
 	}
 
-	_, _, err = ctx.bapp.SimDeliver(txConfig.TxEncoder(), signedTx)
+	_, _, err = ctx.bapp.Deliver(txConfig.TxEncoder(), signedTx)
 	if err != nil {
 		return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "failed to deliver tx"), nil, err
 	}
@@ -204,12 +201,7 @@ func SimulateEthTx(
 }
 
 // CreateRandomValidEthTx create the ethereum tx with valid random values
-func CreateRandomValidEthTx(ctx *simulateContext,
-	from,
-	to *common.Address,
-	amount *big.Int,
-	data *hexutil.Bytes,
-) (ethTx *types.MsgEthereumTx, err error) {
+func CreateRandomValidEthTx(ctx *simulateContext, from, to *common.Address, amount *big.Int, data *hexutil.Bytes) (ethTx *types.MsgEthereumTx, err error) {
 	gasCap := ctx.rand.Uint64()
 	estimateGas, err := EstimateGas(ctx, from, to, data, gasCap)
 	if err != nil {
@@ -266,7 +258,7 @@ func RandomTransferableAmount(ctx *simulateContext, address common.Address, esti
 		amount = new(big.Int).Set(spendable)
 		return amount, nil
 	}
-	simAmount, err := simtypes.RandPositiveInt(ctx.rand, sdkmath.NewIntFromBigInt(spendable))
+	simAmount, err := simtypes.RandPositiveInt(ctx.rand, sdk.NewIntFromBigInt(spendable))
 	if err != nil {
 		return nil, err
 	}
@@ -275,12 +267,7 @@ func RandomTransferableAmount(ctx *simulateContext, address common.Address, esti
 }
 
 // GetSignedTx sign the ethereum tx and packs it as a signing.Tx .
-func GetSignedTx(
-	ctx *simulateContext,
-	txBuilder client.TxBuilder,
-	msg *types.MsgEthereumTx,
-	prv cryptotypes.PrivKey,
-) (signedTx signing.Tx, err error) {
+func GetSignedTx(ctx *simulateContext, txBuilder client.TxBuilder, msg *types.MsgEthereumTx, prv cryptotypes.PrivKey) (signedTx signing.Tx, err error) {
 	builder, ok := txBuilder.(tx.ExtensionOptionsTxBuilder)
 	if !ok {
 		return nil, fmt.Errorf("can not initiate ExtensionOptionsTxBuilder")
@@ -304,7 +291,7 @@ func GetSignedTx(
 		return nil, err
 	}
 
-	fees := sdk.NewCoins(sdk.NewCoin(ctx.keeper.GetParams(ctx.context).EvmDenom, sdkmath.NewIntFromBigInt(txData.Fee())))
+	fees := sdk.NewCoins(sdk.NewCoin(ctx.keeper.GetParams(ctx.context).EvmDenom, sdk.NewIntFromBigInt(txData.Fee())))
 	builder.SetFeeAmount(fees)
 	builder.SetGasLimit(msg.GetGas())
 

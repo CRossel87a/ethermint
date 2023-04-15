@@ -3,7 +3,6 @@ package keeper
 import (
 	"context"
 
-	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/evmos/ethermint/x/feemarket/types"
@@ -29,7 +28,7 @@ func (k Keeper) BaseFee(c context.Context, _ *types.QueryBaseFeeRequest) (*types
 	baseFee := k.GetBaseFee(ctx)
 
 	if baseFee != nil {
-		aux := sdkmath.NewIntFromBigInt(baseFee)
+		aux := sdk.NewIntFromBigInt(baseFee)
 		res.BaseFee = &aux
 	}
 

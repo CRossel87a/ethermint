@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/big"
 
-	sdkmath "cosmossdk.io/math"
-
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
@@ -64,7 +62,7 @@ func newMsgEthereumTx(
 	gasLimit uint64, gasPrice, gasFeeCap, gasTipCap *big.Int, input []byte, accesses *ethtypes.AccessList,
 ) *MsgEthereumTx {
 	var (
-		cid, amt, gp *sdkmath.Int
+		cid, amt, gp *sdk.Int
 		toAddr       string
 		txData       TxData
 	)
@@ -74,17 +72,17 @@ func newMsgEthereumTx(
 	}
 
 	if amount != nil {
-		amountInt := sdkmath.NewIntFromBigInt(amount)
+		amountInt := sdk.NewIntFromBigInt(amount)
 		amt = &amountInt
 	}
 
 	if chainID != nil {
-		chainIDInt := sdkmath.NewIntFromBigInt(chainID)
+		chainIDInt := sdk.NewIntFromBigInt(chainID)
 		cid = &chainIDInt
 	}
 
 	if gasPrice != nil {
-		gasPriceInt := sdkmath.NewIntFromBigInt(gasPrice)
+		gasPriceInt := sdk.NewIntFromBigInt(gasPrice)
 		gp = &gasPriceInt
 	}
 
@@ -99,8 +97,8 @@ func newMsgEthereumTx(
 			Data:     input,
 		}
 	case accesses != nil && gasFeeCap != nil && gasTipCap != nil:
-		gtc := sdkmath.NewIntFromBigInt(gasTipCap)
-		gfc := sdkmath.NewIntFromBigInt(gasFeeCap)
+		gtc := sdk.NewIntFromBigInt(gasTipCap)
+		gfc := sdk.NewIntFromBigInt(gasFeeCap)
 
 		txData = &DynamicFeeTx{
 			ChainID:   cid,
@@ -354,7 +352,7 @@ func (msg *MsgEthereumTx) BuildTx(b client.TxBuilder, evmDenom string) (signing.
 		return nil, err
 	}
 	fees := make(sdk.Coins, 0)
-	feeAmt := sdkmath.NewIntFromBigInt(txData.Fee())
+	feeAmt := sdk.NewIntFromBigInt(txData.Fee())
 	if feeAmt.Sign() > 0 {
 		fees = append(fees, sdk.NewCoin(evmDenom, feeAmt))
 	}

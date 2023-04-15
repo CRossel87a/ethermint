@@ -41,8 +41,7 @@ type TxData interface {
 	Fee() *big.Int
 	Cost() *big.Int
 
-	// effective gasPrice/fee/cost according to current base fee
-	EffectiveGasPrice(baseFee *big.Int) *big.Int
+	// effective fee according to current base fee
 	EffectiveFee(baseFee *big.Int) *big.Int
 	EffectiveCost(baseFee *big.Int) *big.Int
 }

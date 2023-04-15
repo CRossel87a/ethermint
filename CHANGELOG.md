@@ -36,70 +36,6 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 # Changelog
 
-## Unreleased
-
-### Features
-
-* (rpc) [#1682](https://github.com/evmos/ethermint/pull/1682) Add config for maximum number of bytes returned from eth_call.
-
-### Bug Fixes
-
-* (rpc) [#1611](https://github.com/evmos/ethermint/pull/1611) Add missing next fee in fee history, fix wrong oldestBlock and align earliest input as ethereum.
-* (rpc) [#1613](https://github.com/evmos/ethermint/pull/1613) Change the default json-rpc listen address to localhost.
-* (rpc) [#1638](https://github.com/evmos/ethermint/pull/1638) Align results when querying `eth_getTransactionCount` for future blocks for accounts with zero and non-zero transaction counts.
-* (rpc) [#1688](https://github.com/evmos/ethermint/pull/1688) Align filter rule for `debug_traceBlockByNumber`
-* (rpc) [#1639](https://github.com/evmos/ethermint/pull/1639) Align block number input behaviour for `eth_getProof` as Ethereum.
-
-### Improvements
-
-* (cli) [#1615](https://github.com/evmos/ethermint/pull/1615) Support customize db opener in `StartCmd`.
-
-### State Machine Breaking
-
-* (deps) [#1361](https://github.com/evmos/ethermint/pull/1361) Bump ibc-go to [`v5.0.0`](https://github.com/cosmos/ibc-go/releases/tag/v5.0.0)
-* (evm) [\#1272](https://github.com/evmos/ethermint/pull/1272) Implement modular interface for the EVM.
-* (deps) [#1168](https://github.com/evmos/ethermint/pull/1168) Upgrade Cosmos SDK to `v0.46`.
-* (feemarket) [#1194](https://github.com/evmos/ethermint/pull/1194) Apply feemarket to native cosmos tx.
-* (eth) [#1346](https://github.com/evmos/ethermint/pull/1346) Added support for `sdk.Dec` and `ed25519` type on eip712.
-
-### API Breaking
-
-* (ante) [#1214](https://github.com/evmos/ethermint/pull/1214) Set mempool priority to EVM transactions.
-* (evm) [#1405](https://github.com/evmos/ethermint/pull/1405) Add parameter `chainID` to evm keeper's `EVMConfig` method, so caller can choose to not use the cached `eip155ChainID`.
-
-### Improvements
-
-* (lint) [#1298](https://github.com/evmos/ethermint/pull/1298) 150 character line length limit, `gofumpt`, and linting
-* (feemarket) [\#1165](https://github.com/evmos/ethermint/pull/1165) Add hint in specs about different gas terminology in Cosmos and Ethereum.
-* (cli) [#1226](https://github.com/evmos/ethermint/pull/1226) Add custom app db backend flag.
-* (ante) [#1289](https://github.com/evmos/ethermint/pull/1289) Change the fallback tx priority mechanism to be based on gas price.
-* (test) [#1311](https://github.com/evmos/ethermint/pull/1311) Add integration test for the `rollback` cmd
-* (ledger) [#1277](https://github.com/evmos/ethermint/pull/1277) Add Ledger preprocessing transaction hook for EIP-712-signed Cosmos payloads.
-* (rpc) [#1296](https://github.com/evmos/ethermint/pull/1296) Add RPC Backend unit tests.
-* (rpc) [#1352](https://github.com/evmos/ethermint/pull/1352) Make the grpc queries run concurrently, don't block the consensus state machine.
-* (cli) [#1360](https://github.com/evmos/ethermint/pull/1360) Introduce a new `grpc-only` flag, such that when enabled, will start the node in a query-only mode. Note, gRPC MUST be enabled with this flag.
-* (rpc) [#1378](https://github.com/evmos/ethermint/pull/1378) Add support for EVM RPC metrics
-* (test) [#1396](https://github.com/evmos/ethermint/pull/1396) Increase test coverage for the EVM module `keeper`
-* (deps) [#1416](https://github.com/evmos/ethermint/pull/1416) Bump Go version to `1.19`
-* (cmd) [\#1417](https://github.com/evmos/ethermint/pull/1417) Apply Google CLI Syntax for required and optional args.
-
-### Bug Fixes
-
-* (rpc) [#1179](https://github.com/evmos/ethermint/pull/1179) Fix gas used in traceTransaction response.
-* (rpc) [#1284](https://github.com/evmos/ethermint/pull/1284) Fix internal trace response upon incomplete `eth_sendTransaction` call.
-* (rpc) [#1340](https://github.com/evmos/ethermint/pull/1340) Fix error response when `eth_estimateGas` height provided is not found.
-* (rpc) [#1354](https://github.com/evmos/ethermint/pull/1354) Fix grpc query failure(`BaseFee` and `EthCall`) on legacy block states.
-* (cli) [#1362](https://github.com/evmos/ethermint/pull/1362) Fix `index-eth-tx` error when the indexer db is empty.
-* (state) [#1320](https://github.com/evmos/ethermint/pull/1320) Fix codehash check mismatch when the code has been deleted in the evm state.
-* (rpc) [#1392](https://github.com/evmos/ethermint/pull/1392) Allow fill the proposer address in json-rpc through tendermint api, and pass explicitly to grpc query handler.
-* (rpc) [#1405](https://github.com/evmos/ethermint/pull/1405) Pass chain-id to grpc query through request, otherwise it's not initialized if abci event don't happens.
-* (rpc) [#1431](https://github.com/evmos/ethermint/pull/1431) Align hex-strings proof fields in `eth_getProof` as Ethereum.
-* (rpc) [#1484](https://github.com/evmos/ethermint/pull/1484) Align empty account result for old blocks as ethereum instead of return account not found error.
-* (rpc) [#1503](https://github.com/evmos/ethermint/pull/1503) Fix block hashes returned on JSON-RPC filter `eth_newBlockFilter`.
-* (rpc) [#1557](https://github.com/evmos/ethermint/pull/1557) Patch GasUsed before the fix of revert gas refund logic when transaction reverted for `eth_getTransactionReceipt`.
-* (ante) [#1566](https://github.com/evmos/ethermint/pull/1566) Fix `gasWanted` on `EthGasConsumeDecorator` ante handler when running transaction in `ReCheckMode`
-* (rpc) [#1591](https://github.com/evmos/ethermint/pull/1591) Fix block number returned in opcode for debug trace related api.
-
 ## [v0.19.3] - 2022-10-14
 
 * (deps) [1381](https://github.com/evmos/ethermint/pull/1381) Bump sdk to `v0.45.9`
@@ -108,30 +44,30 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
-* (deps) [1301](https://github.com/evmos/ethermint/pull/1301) Bump Cosmos SDK to `v0.45.8`, Tendermint to `v0.34.21`, IAVL to `v0.19.1` & store options
+* (deps) [1301](https://github.com/evmos/ethermint/pull/1301) Bumb sdk to `v0.45.8`, tendermint to `v0.34.21`, iavl to `v0.19.1` & store options
 
 ## [v0.19.1] - 2022-08-26
 
 ### State Machine Breaking
 
-* (eth) [#1305](https://github.com/evmos/ethermint/pull/1305) Added support for optional params, basic types arrays and `time` type on eip712.
+* (eth) [#1305](https://github.com/evmos/ethermint/pull/1305) Added support for optional params, basic types arrays and `time` type on eip712.
 
 ## [v0.19.0] - 2022-08-15
 
 ### State Machine Breaking
 
 * (deps) [#1159](https://github.com/evmos/ethermint/pull/1159) Bump Geth version to `v1.10.19`.
-* (ante) [#1176](https://github.com/evmos/ethermint/pull/1176) Fix invalid tx hashes; Remove `Size_` field and validate `Hash`/`From` fields in ante handler,
+* (ante) [#1176](https://github.com/evmos/ethermint/pull/1176) Fix invalid tx hashes; Remove `Size_` field and validate `Hash`/`From` fields in ante handler,
   recompute eth tx hashes in JSON-RPC APIs to fix old blocks.
 * (ante) [#1173](https://github.com/evmos/ethermint/pull/1173) Make `NewAnteHandler` return error if input is invalid
 
 ### API Breaking
 
-* (rpc) [#1121](https://github.com/tharsis/ethermint/pull/1121) Implement Ethereum tx indexer
+* (rpc) [#1121](https://github.com/tharsis/ethermint/pull/1121) Implement Ethereum tx indexer
 
 ### Bug Fixes
 
-* (rpc) [#1179](https://github.com/evmos/ethermint/pull/1179) Fix gas used in `debug_traceTransaction` response.
+* (rpc) [#1179](https://github.com/evmos/ethermint/pull/1179) Fix gas used in `debug_traceTransaction` response.
 
 ### Improvements
 
@@ -142,14 +78,13 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (test) [#1207](https://github.com/evmos/ethermint/pull/1207) JSON-RPC types integration tests
 * (test) [#1218](https://github.com/evmos/ethermint/pull/1218) Restructure JSON-RPC API
 * (rpc) [#1229](https://github.com/evmos/ethermint/pull/1229) Add support for configuring RPC `MaxOpenConnections`
-* (cli) [#1230](https://github.com/evmos/ethermint/pull/1230) Remove redundant positional height parameter from feemarket's query cli.
+* (cli) [#1230](https://github.com/evmos/ethermint/pull/1230) Remove redundant positional height parameter from feemarket's query cli.
 * (test)[#1233](https://github.com/evmos/ethermint/pull/1233) Add filters integration tests
 
 ## [v0.18.0] - 2022-08-04
 
 ### State Machine Breaking
 
-* (evm) [\#1234](https://github.com/evmos/ethermint/pull/1234) Fix [CVE-2022-35936](https://github.com/evmos/ethermint/security/advisories/GHSA-f92v-grc2-w2fg) security vulnerability.
 * (evm) [\#1174](https://github.com/evmos/ethermint/pull/1174) Don't allow eth txs with 0 in mempool.
 
 ### Improvements
@@ -181,10 +116,6 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (rpc) [\#1126](https://github.com/evmos/ethermint/pull/1126) Make some JSON-RPC APIS work for pruned nodes.
 * (rpc) [\#1143](https://github.com/evmos/ethermint/pull/1143) Restrict unprotected txs on the node JSON-RPC configuration.
 * (all) [\#1137](https://github.com/evmos/ethermint/pull/1137) Rename go module to `evmos/ethermint`
-
-### API Breaking
-
-- (json-rpc) [tharsis#1121](https://github.com/tharsis/ethermint/pull/1121) Store eth tx index separately
 
 ### Improvements
 

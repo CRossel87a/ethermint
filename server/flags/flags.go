@@ -7,20 +7,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Tendermint/cosmos-sdk full-node start flags
+// Tendermint full-node start flags
 const (
 	WithTendermint = "with-tendermint"
 	Address        = "address"
 	Transport      = "transport"
 	TraceStore     = "trace-store"
 	CPUProfile     = "cpu-profile"
-	// The type of database for application and snapshots databases
-	AppDBBackend = "app-db-backend"
 )
 
 // GRPC-related flags.
 const (
-	GRPCOnly       = "grpc-only"
 	GRPCEnable     = "grpc.enable"
 	GRPCAddress    = "grpc.address"
 	GRPCWebEnable  = "grpc-web.enable"
@@ -50,12 +47,6 @@ const (
 	JSONRPCAllowUnprotectedTxs = "json-rpc.allow-unprotected-txs"
 	JSONRPCMaxOpenConnections  = "json-rpc.max-open-connections"
 	JSONRPCEnableIndexer       = "json-rpc.enable-indexer"
-	// JSONRPCEnableMetrics enables EVM RPC metrics server.
-	// Set to `metrics` which is hardcoded flag from go-ethereum.
-	// https://github.com/ethereum/go-ethereum/blob/master/metrics/metrics.go#L35-L55
-	JSONRPCEnableMetrics            = "metrics"
-	JSONRPCReturnDataLimit          = "json-rpc.return-data-limit"
-	JSONRPCFixRevertGasRefundHeight = "json-rpc.fix-revert-gas-refund-height"
 )
 
 // EVM flags
@@ -76,8 +67,8 @@ func AddTxFlags(cmd *cobra.Command) (*cobra.Command, error) {
 	cmd.PersistentFlags().String(flags.FlagFrom, "", "Name or address of private key with which to sign")
 	cmd.PersistentFlags().String(flags.FlagFees, "", "Fees to pay along with transaction; eg: 10aphoton")
 	cmd.PersistentFlags().String(flags.FlagGasPrices, "", "Gas prices to determine the transaction fee (e.g. 10aphoton)")
-	cmd.PersistentFlags().String(flags.FlagNode, "tcp://localhost:26657", "<host>:<port> to tendermint rpc interface for this chain")                                                                                                   //nolint:lll
-	cmd.PersistentFlags().Float64(flags.FlagGasAdjustment, flags.DefaultGasAdjustment, "adjustment factor to be multiplied against the estimate returned by the tx simulation; if the gas limit is set manually this flag is ignored ") //nolint:lll
+	cmd.PersistentFlags().String(flags.FlagNode, "tcp://localhost:26657", "<host>:<port> to tendermint rpc interface for this chain")
+	cmd.PersistentFlags().Float64(flags.FlagGasAdjustment, flags.DefaultGasAdjustment, "adjustment factor to be multiplied against the estimate returned by the tx simulation; if the gas limit is set manually this flag is ignored ")
 	cmd.PersistentFlags().StringP(flags.FlagBroadcastMode, "b", flags.BroadcastSync, "Transaction broadcasting mode (sync|async|block)")
 	cmd.PersistentFlags().String(flags.FlagKeyringBackend, keyring.BackendOS, "Select keyring's backend")
 

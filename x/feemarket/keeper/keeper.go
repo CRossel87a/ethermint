@@ -1,15 +1,11 @@
 package keeper
 
 import (
-	"math/big"
-
 	"github.com/cosmos/cosmos-sdk/codec"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/tendermint/tendermint/libs/log"
 
-	v010 "github.com/evmos/ethermint/x/feemarket/migrations/v010"
 	"github.com/evmos/ethermint/x/feemarket/types"
 )
 
@@ -18,15 +14,15 @@ type Keeper struct {
 	// Protobuf codec
 	cdc codec.BinaryCodec
 	// Store key required for the Fee Market Prefix KVStore.
-	storeKey     storetypes.StoreKey
-	transientKey storetypes.StoreKey
+	storeKey     sdk.StoreKey
+	transientKey sdk.StoreKey
 	// module specific parameter space that can be configured through governance
 	paramSpace paramtypes.Subspace
 }
 
 // NewKeeper generates new fee market module keeper
 func NewKeeper(
-	cdc codec.BinaryCodec, paramSpace paramtypes.Subspace, storeKey, transientKey storetypes.StoreKey,
+	cdc codec.BinaryCodec, paramSpace paramtypes.Subspace, storeKey, transientKey sdk.StoreKey,
 ) Keeper {
 	// set KeyTable if it has not already been set
 	if !paramSpace.HasKeyTable() {
@@ -92,15 +88,4 @@ func (k Keeper) AddTransientGasWanted(ctx sdk.Context, gasWanted uint64) (uint64
 	result := k.GetTransientGasWanted(ctx) + gasWanted
 	k.SetTransientBlockGasWanted(ctx, result)
 	return result, nil
-}
-
-// GetBaseFeeV1 get the base fee from v1 version of states.
-// return nil if base fee is not enabled
-func (k Keeper) GetBaseFeeV1(ctx sdk.Context) *big.Int {
-	store := ctx.KVStore(k.storeKey)
-	bz := store.Get(v010.KeyPrefixBaseFeeV1)
-	if len(bz) == 0 {
-		return nil
-	}
-	return new(big.Int).SetBytes(bz)
 }

@@ -4,22 +4,21 @@
     cmd: 'ethermintd',
     'start-flags': '--trace',
     config: {
-      mempool: {
-        // use v1 mempool to enable tx prioritization
-        version: 'v1',
+      consensus: {
+        // larger timeout for more stable mempool tests
+        timeout_commit: '10s',
       },
     },
     'app-config': {
       'minimum-gas-prices': '0aphoton',
       'index-events': ['ethereum_tx.ethereumTxHash'],
       'json-rpc': {
-        address: '127.0.0.1:{EVMRPC_PORT}',
-        'ws-address': '127.0.0.1:{EVMRPC_PORT_WS}',
+        address: '0.0.0.0:{EVMRPC_PORT}',
+        'ws-address': '0.0.0.0:{EVMRPC_PORT_WS}',
         api: 'eth,net,web3,debug',
         'feehistory-cap': 100,
         'block-range-cap': 10000,
         'logs-cap': 10000,
-        'fix-revert-gas-refund-height': 1,
       },
     },
     validators: [{

@@ -5,7 +5,7 @@
 let
   version = "v0.17.1";
   pname = "ethermintd";
-  tags = [ "netgo" ];
+  tags = [ "ledger" "netgo" ];
   ldflags = lib.concatStringsSep "\n" ([
     "-X github.com/cosmos/cosmos-sdk/version.Name=ethermint"
     "-X github.com/cosmos/cosmos-sdk/version.AppName=${pname}"

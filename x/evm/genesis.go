@@ -48,14 +48,11 @@ func InitGenesis(
 				),
 			)
 		}
+
 		code := common.Hex2Bytes(account.Code)
 		codeHash := crypto.Keccak256Hash(code)
-
-		// we ignore the empty Code hash checking, see ethermint PR#1234
-		if len(account.Code) != 0 && !bytes.Equal(ethAcct.GetCodeHash().Bytes(), codeHash.Bytes()) {
-			s := "the evm state code doesn't match with the codehash\n"
-			panic(fmt.Sprintf("%s account: %s , evm state codehash: %v, ethAccount codehash: %v, evm state code: %s\n",
-				s, account.Address, codeHash, ethAcct.GetCodeHash(), account.Code))
+		if !bytes.Equal(ethAcct.GetCodeHash().Bytes(), codeHash.Bytes()) {
+			panic("code don't match codeHash")
 		}
 
 		k.SetCode(ctx, codeHash.Bytes(), code)

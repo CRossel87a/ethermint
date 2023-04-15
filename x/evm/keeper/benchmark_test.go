@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -18,7 +17,7 @@ import (
 
 func SetupContract(b *testing.B) (*KeeperTestSuite, common.Address) {
 	suite := KeeperTestSuite{}
-	suite.SetupTestWithT(b)
+	suite.SetupTest()
 
 	amt := sdk.Coins{ethermint.NewPhotonCoinInt64(1000000000000000000)}
 	err := suite.app.BankKeeper.MintCoins(suite.ctx, types.ModuleName, amt)
@@ -26,7 +25,7 @@ func SetupContract(b *testing.B) (*KeeperTestSuite, common.Address) {
 	err = suite.app.BankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.address.Bytes(), amt)
 	require.NoError(b, err)
 
-	contractAddr := suite.DeployTestContract(b, suite.address, sdkmath.NewIntWithDecimal(1000, 18).BigInt())
+	contractAddr := suite.DeployTestContract(b, suite.address, sdk.NewIntWithDecimal(1000, 18).BigInt())
 	suite.Commit()
 
 	return &suite, contractAddr
@@ -34,7 +33,7 @@ func SetupContract(b *testing.B) (*KeeperTestSuite, common.Address) {
 
 func SetupTestMessageCall(b *testing.B) (*KeeperTestSuite, common.Address) {
 	suite := KeeperTestSuite{}
-	suite.SetupTestWithT(b)
+	suite.SetupTest()
 
 	amt := sdk.Coins{ethermint.NewPhotonCoinInt64(1000000000000000000)}
 	err := suite.app.BankKeeper.MintCoins(suite.ctx, types.ModuleName, amt)
@@ -67,7 +66,7 @@ func DoBenchmark(b *testing.B, txBuilder TxBuilder) {
 		txData, err := types.UnpackTxData(msg.Data)
 		require.NoError(b, err)
 
-		fees := sdk.Coins{sdk.NewCoin(suite.EvmDenom(), sdkmath.NewIntFromBigInt(txData.Fee()))}
+		fees := sdk.Coins{sdk.NewCoin(suite.EvmDenom(), sdk.NewIntFromBigInt(txData.Fee()))}
 		err = authante.DeductFees(suite.app.BankKeeper, suite.ctx, suite.app.AccountKeeper.GetAccount(ctx, msg.GetFrom()), fees)
 		require.NoError(b, err)
 
@@ -134,7 +133,7 @@ func BenchmarkMessageCall(b *testing.B) {
 		txData, err := types.UnpackTxData(msg.Data)
 		require.NoError(b, err)
 
-		fees := sdk.Coins{sdk.NewCoin(suite.EvmDenom(), sdkmath.NewIntFromBigInt(txData.Fee()))}
+		fees := sdk.Coins{sdk.NewCoin(suite.EvmDenom(), sdk.NewIntFromBigInt(txData.Fee()))}
 		err = authante.DeductFees(suite.app.BankKeeper, suite.ctx, suite.app.AccountKeeper.GetAccount(ctx, msg.GetFrom()), fees)
 		require.NoError(b, err)
 

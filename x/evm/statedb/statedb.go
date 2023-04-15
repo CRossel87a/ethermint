@@ -429,7 +429,7 @@ func (s *StateDB) RevertToSnapshot(revid int) {
 	snapshot := s.validRevisions[idx].journalIndex
 
 	// Replay the journal to undo changes and remove invalidated snapshots
-	s.journal.Revert(s, snapshot)
+	s.journal.revert(s, snapshot)
 	s.validRevisions = s.validRevisions[:idx]
 }
 

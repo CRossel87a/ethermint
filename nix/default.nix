@@ -27,13 +27,13 @@ import sources.nixpkgs {
           dotenv = builtins.path { name = "dotenv"; path = ../scripts/.env; };
         };
       })
-    (_: pkgs: { test-env = pkgs.callPackage ./testenv.nix { }; })
+    (_: pkgs: { test-env = import ./testenv.nix { inherit pkgs; }; })
     (_: pkgs: {
       cosmovisor = pkgs.buildGo118Module rec {
         name = "cosmovisor";
         src = sources.cosmos-sdk + "/cosmovisor";
         subPackages = [ "./cmd/cosmovisor" ];
-        vendorSha256 = "sha256-OAXWrwpartjgSP7oeNvDJ7cTR9lyYVNhEM8HUnv3acE=";
+        vendorSha256 = "sha256-b5WxrM1L2e/J6ZrOKwzmi85YuoRw/bPor20zNIenYS8=";
         doCheck = false;
       };
     })

@@ -73,16 +73,6 @@ max-open-connections = {{ .JSONRPC.MaxOpenConnections }}
 # EnableIndexer enables the custom transaction indexer for the EVM (ethereum transactions).
 enable-indexer = {{ .JSONRPC.EnableIndexer }}
 
-# MetricsAddress defines the EVM Metrics server address to bind to. Pass --metrics in CLI to enable
-# Prometheus metrics path: /debug/metrics/prometheus
-metrics-address = "{{ .JSONRPC.MetricsAddress }}"
-
-# Maximum number of bytes returned from eth_call or similar invocations.
-return-data-limit = {{ .JSONRPC.ReturnDataLimit }}
-
-# Upgrade height for fix of revert gas refund logic when transaction reverted.
-fix-revert-gas-refund-height = {{ .JSONRPC.FixRevertGasRefundHeight }}
-
 ###############################################################################
 ###                             TLS Configuration                           ###
 ###############################################################################

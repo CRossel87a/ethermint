@@ -217,6 +217,22 @@ func (es EventSystem) SubscribePendingTxs() (*Subscription, pubsub.UnsubscribeFu
 
 type filterIndex map[filters.Type]map[rpc.ID]*Subscription
 
+/*
+old:
+		case f := <-es.install:
+			es.indexMux.Lock()
+			es.index[f.typ][f.id] = f
+			ch := make(chan coretypes.ResultEvent)
+			es.topicChans[f.event] = ch
+			if err := es.eventBus.AddTopic(f.event, ch); err != nil {
+				es.logger.Error("failed to add event topic to event bus", "topic", f.event, "error", err.Error())
+			}
+			es.indexMux.Unlock()
+			close(f.installed)
+
+
+*/
+
 // eventLoop (un)installs filters and processes mux events.
 func (es *EventSystem) eventLoop() {
 	for {
@@ -225,9 +241,10 @@ func (es *EventSystem) eventLoop() {
 			es.indexMux.Lock()
 			es.index[f.typ][f.id] = f
 			ch := make(chan coretypes.ResultEvent)
-			es.topicChans[f.event] = ch
 			if err := es.eventBus.AddTopic(f.event, ch); err != nil {
 				es.logger.Error("failed to add event topic to event bus", "topic", f.event, "error", err.Error())
+			} else {
+				es.topicChans[f.event] = ch
 			}
 			es.indexMux.Unlock()
 			close(f.installed)

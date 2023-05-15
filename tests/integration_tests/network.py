@@ -68,12 +68,8 @@ class Geth:
         self.w3 = w3
 
 
-def setup_ethermint(path, base_port, long_timeout_commit=False):
-    cfg = Path(__file__).parent / (
-        "configs/default.jsonnet"
-        if long_timeout_commit
-        else "configs/long_timeout_commit.jsonnet"
-    )
+def setup_ethermint(path, base_port):
+    cfg = Path(__file__).parent / "configs/default.jsonnet"
     yield from setup_custom_ethermint(path, base_port, cfg)
 
 

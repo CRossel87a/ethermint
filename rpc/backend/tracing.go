@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	sdkmath "cosmossdk.io/math"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	rpctypes "github.com/evmos/ethermint/rpc/types"
+	ethermint "github.com/evmos/ethermint/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	"github.com/pkg/errors"
 	tmrpctypes "github.com/tendermint/tendermint/rpc/core/types"
@@ -78,6 +81,12 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 		return nil, fmt.Errorf("invalid transaction type %T", tx)
 	}
 
+	tmp, err := ethermint.ParseChainID(blk.Block.ChainID)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(err, "failed to parse chainID: %s", blk.Block.ChainID)
+	}
+	chainID := sdkmath.NewIntFromBigInt(tmp)
+
 	traceTxRequest := evmtypes.QueryTraceTxRequest{
 		Msg:             ethMessage,
 		Predecessors:    predecessors,
@@ -85,7 +94,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 		BlockTime:       blk.Block.Time,
 		BlockHash:       common.Bytes2Hex(blk.BlockID.Hash),
 		ProposerAddress: sdk.ConsAddress(blk.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		ChainId:         &chainID,
 	}
 
 	if config != nil {
@@ -128,19 +137,11 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
 		// If there are no transactions return empty array
 		return []*evmtypes.TxTraceResult{}, nil
 	}
-	blockRes, err := b.TendermintBlockResultByNumber(&block.Block.Height)
-	if err != nil {
-		b.logger.Debug("block result not found", "height", block.Block.Height, "error", err.Error())
-		return nil, nil
-	}
+
 	txDecoder := b.clientCtx.TxConfig.TxDecoder()
 
 	var txsMessages []*evmtypes.MsgEthereumTx
 	for i, tx := range txs {
-		if !rpctypes.TxSuccessOrExceedsBlockGasLimit(blockRes.TxsResults[i]) {
-			b.logger.Debug("invalid tx result code", "cosmos-hash", hexutil.Encode(tx.Hash()))
-			continue
-		}
 		decodedTx, err := txDecoder(tx)
 		if err != nil {
 			b.logger.Error("failed to decode transaction", "hash", txs[i].Hash(), "error", err.Error())
@@ -165,6 +166,12 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
 	}
 	ctxWithHeight := rpctypes.ContextWithHeight(int64(contextHeight))
 
+	tmp, err := ethermint.ParseChainID(block.Block.ChainID)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(err, "failed to parse chainID: %s", block.Block.ChainID)
+	}
+	chainID := sdkmath.NewIntFromBigInt(tmp)
+
 	traceBlockRequest := &evmtypes.QueryTraceBlockRequest{
 		Txs:             txsMessages,
 		TraceConfig:     config,
@@ -172,7 +179,7 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
 		BlockTime:       block.Block.Time,
 		BlockHash:       common.Bytes2Hex(block.BlockID.Hash),
 		ProposerAddress: sdk.ConsAddress(block.Block.ProposerAddress),
-		ChainId:         b.chainID.Int64(),
+		ChainId:         &chainID,
 	}
 
 	res, err := b.queryClient.TraceBlock(ctxWithHeight, traceBlockRequest)

@@ -25,17 +25,6 @@ import (
 var _ tmrpcclient.Client = &mocks.Client{}
 
 // Block
-func RegisterBlockMultipleTxs(
-	client *mocks.Client,
-	height int64,
-	txs []types.Tx,
-) (*tmrpctypes.ResultBlock, error) {
-	block := types.MakeBlock(height, txs, nil, nil)
-	block.ChainID = ChainID
-	resBlock := &tmrpctypes.ResultBlock{Block: block}
-	client.On("Block", rpc.ContextWithHeight(height), mock.AnythingOfType("*int64")).Return(resBlock, nil)
-	return resBlock, nil
-}
 func RegisterBlock(
 	client *mocks.Client,
 	height int64,
@@ -44,7 +33,6 @@ func RegisterBlock(
 	// without tx
 	if tx == nil {
 		emptyBlock := types.MakeBlock(height, []types.Tx{}, nil, nil)
-		emptyBlock.ChainID = ChainID
 		resBlock := &tmrpctypes.ResultBlock{Block: emptyBlock}
 		client.On("Block", rpc.ContextWithHeight(height), mock.AnythingOfType("*int64")).
 			Return(resBlock, nil)
@@ -53,7 +41,6 @@ func RegisterBlock(
 
 	// with tx
 	block := types.MakeBlock(height, []types.Tx{tx}, nil, nil)
-	block.ChainID = ChainID
 	resBlock := &tmrpctypes.ResultBlock{Block: block}
 	client.On("Block", rpc.ContextWithHeight(height), mock.AnythingOfType("*int64")).
 		Return(resBlock, nil)
@@ -85,7 +72,6 @@ func TestRegisterBlock(t *testing.T) {
 	res, err := client.Block(rpc.ContextWithHeight(height), &height)
 
 	emptyBlock := types.MakeBlock(height, []types.Tx{}, nil, nil)
-	emptyBlock.ChainID = ChainID
 	resBlock := &tmrpctypes.ResultBlock{Block: emptyBlock}
 	require.Equal(t, resBlock, res)
 	require.NoError(t, err)

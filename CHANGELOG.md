@@ -42,14 +42,6 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 * (rpc) [#1682](https://github.com/evmos/ethermint/pull/1682) Add config for maximum number of bytes returned from eth_call.
 
-### Bug Fixes
-
-* (rpc) [#1611](https://github.com/evmos/ethermint/pull/1611) Add missing next fee in fee history, fix wrong oldestBlock and align earliest input as ethereum.
-* (rpc) [#1613](https://github.com/evmos/ethermint/pull/1613) Change the default json-rpc listen address to localhost.
-* (rpc) [#1638](https://github.com/evmos/ethermint/pull/1638) Align results when querying `eth_getTransactionCount` for future blocks for accounts with zero and non-zero transaction counts.
-* (rpc) [#1688](https://github.com/evmos/ethermint/pull/1688) Align filter rule for `debug_traceBlockByNumber`
-* (rpc) [#1639](https://github.com/evmos/ethermint/pull/1639) Align block number input behaviour for `eth_getProof` as Ethereum.
-
 ### Improvements
 
 * (cli) [#1615](https://github.com/evmos/ethermint/pull/1615) Support customize db opener in `StartCmd`.
@@ -94,11 +86,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (rpc) [#1392](https://github.com/evmos/ethermint/pull/1392) Allow fill the proposer address in json-rpc through tendermint api, and pass explicitly to grpc query handler.
 * (rpc) [#1405](https://github.com/evmos/ethermint/pull/1405) Pass chain-id to grpc query through request, otherwise it's not initialized if abci event don't happens.
 * (rpc) [#1431](https://github.com/evmos/ethermint/pull/1431) Align hex-strings proof fields in `eth_getProof` as Ethereum.
-* (rpc) [#1484](https://github.com/evmos/ethermint/pull/1484) Align empty account result for old blocks as ethereum instead of return account not found error.
 * (rpc) [#1503](https://github.com/evmos/ethermint/pull/1503) Fix block hashes returned on JSON-RPC filter `eth_newBlockFilter`.
-* (rpc) [#1557](https://github.com/evmos/ethermint/pull/1557) Patch GasUsed before the fix of revert gas refund logic when transaction reverted for `eth_getTransactionReceipt`.
-* (ante) [#1566](https://github.com/evmos/ethermint/pull/1566) Fix `gasWanted` on `EthGasConsumeDecorator` ante handler when running transaction in `ReCheckMode`
-* (rpc) [#1591](https://github.com/evmos/ethermint/pull/1591) Fix block number returned in opcode for debug trace related api.
 
 ## [v0.19.3] - 2022-10-14
 

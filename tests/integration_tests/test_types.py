@@ -49,7 +49,8 @@ def get_blocks(ethermint_rpc_ws, geth, with_transactions):
             with_transactions,
         ],
     )
-    compare_types(eth_rsp, geth_rsp)
+    res, err = same_types(eth_rsp, geth_rsp)
+    assert res, err
 
     # Get not existing block
     make_same_rpc_calls(
@@ -178,7 +179,8 @@ def test_get_storage_at(ethermint_rpc_ws, geth):
 
     contract = deploy_and_wait(w3)
     res = eth_rpc.make_request("eth_getStorageAt", [contract.address, "0x0", "latest"])
-    compare_types(res["result"], EXPECTED_GET_STORAGE_AT)
+    res, err = same_types(res["result"], EXPECTED_GET_STORAGE_AT)
+    assert res, err
 
 
 def send_tnx(w3, tx_value=10):
@@ -213,15 +215,16 @@ def test_get_proof(ethermint_rpc_ws, geth):
     proof = (eth_rpc.make_request(
         method, [validator, ["0x0"], hex(res["blockNumber"])]
     ))["result"]
-    compare_types(proof, EXPECTED_GET_PROOF["result"])
+    res, err = same_types(proof, EXPECTED_GET_PROOF)
+    assert res, err
     assert proof["accountProof"], EXPECTED_ACCOUNT_PROOF
     assert proof["storageProof"][0]["proof"], EXPECTED_STORAGE_PROOF
 
-    _ = send_and_get_hash(w3)
-    proof = eth_rpc.make_request(
+    proof = (geth_rpc.make_request(
         method, [validator, ["0x0"], "latest"]
-    )
-    compare_types(proof, EXPECTED_GET_PROOF)
+    ))["result"]
+    res, err = same_types(proof, EXPECTED_GET_PROOF)
+    assert res, err
 
 
 def test_get_code(ethermint_rpc_ws, geth):
@@ -238,8 +241,9 @@ def test_get_code(ethermint_rpc_ws, geth):
     # Do an ethereum transfer
     contract = deploy_and_wait(w3)
     code = eth_rpc.make_request("eth_getCode", [contract.address, "latest"])
-    expected = {"id": 4, "jsonrpc": "2.0", "result": "0x"}
-    compare_types(code, expected)
+    expected = {"id": "4", "jsonrpc": "2.0", "result": "0x"}
+    res, err = same_types(code, expected)
+    assert res, err
 
 
 def test_get_block_transaction_count(ethermint_rpc_ws, geth):
@@ -251,7 +255,7 @@ def test_get_block_transaction_count(ethermint_rpc_ws, geth):
     )
 
     make_same_rpc_calls(
-        eth_rpc, geth_rpc, "eth_getBlockTransactionCountByNumber", ["0x1000"]
+        eth_rpc, geth_rpc, "eth_getBlockTransactionCountByNumber", ["0x100"]
     )
 
     tx_hash = send_and_get_hash(w3)
@@ -263,8 +267,9 @@ def test_get_block_transaction_count(ethermint_rpc_ws, geth):
         "eth_getBlockTransactionCountByNumber", [block_number]
     )
 
-    expected = {"id": 1, "jsonrpc": "2.0", "result": "0x1"}
-    compare_types(block_res, expected)
+    expected = {"id": "1", "jsonrpc": "2.0", "result": "0x1"}
+    res, err = same_types(block_res, expected)
+    assert res, err
 
     make_same_rpc_calls(
         eth_rpc,
@@ -273,8 +278,9 @@ def test_get_block_transaction_count(ethermint_rpc_ws, geth):
         ["0x4e3a3754410177e6937ef1f84bba68ea139e8d1a2258c5f85db9f1cd715a1bdd"],
     )
     block_res = eth_rpc.make_request("eth_getBlockTransactionCountByHash", [block_hash])
-    expected = {"id": 1, "jsonrpc": "2.0", "result": "0x1"}
-    compare_types(block_res, expected)
+    expected = {"id": "1", "jsonrpc": "2.0", "result": "0x1"}
+    res, err = same_types(block_res, expected)
+    assert res, err
 
 
 def test_get_transaction(ethermint_rpc_ws, geth):
@@ -291,8 +297,8 @@ def test_get_transaction(ethermint_rpc_ws, geth):
     tx_hash = send_and_get_hash(w3)
 
     tx_res = eth_rpc.make_request("eth_getTransactionByHash", [tx_hash])
-
-    compare_types(EXPECTED_GET_TRANSACTION, tx_res)
+    res, err = same_types(tx_res, EXPECTED_GET_TRANSACTION)
+    assert res, err
 
 
 def test_get_transaction_receipt(ethermint_rpc_ws, geth):
@@ -309,7 +315,8 @@ def test_get_transaction_receipt(ethermint_rpc_ws, geth):
     tx_hash = send_and_get_hash(w3)
 
     tx_res = eth_rpc.make_request("eth_getTransactionReceipt", [tx_hash])
-    compare_types(tx_res, EXPECTED_GET_TRANSACTION_RECEIPT)
+    res, err = same_types(tx_res["result"], EXPECTED_GET_TRANSACTION_RECEIPT)
+    assert res, err
 
 
 def test_fee_history(ethermint_rpc_ws, geth):
@@ -320,10 +327,10 @@ def test_fee_history(ethermint_rpc_ws, geth):
 
     make_same_rpc_calls(eth_rpc, geth_rpc, "eth_feeHistory", [4, "0x5000", [10, 90]])
 
-    _ = send_and_get_hash(w3)
-    fee_history = eth_rpc.make_request("eth_feeHistory", [4, "latest", [100]])
+    fee_history = eth_rpc.make_request("eth_feeHistory", [4, "latest", [10, 90]])
 
-    compare_types(fee_history, EXPECTED_FEE_HISTORY)
+    res, err = same_types(fee_history["result"], EXPECTED_FEE_HISTORY)
+    assert res, err
 
 
 def test_estimate_gas(ethermint_rpc_ws, geth):
@@ -338,19 +345,11 @@ def test_estimate_gas(ethermint_rpc_ws, geth):
     make_same_rpc_calls(eth_rpc, geth_rpc, "eth_estimateGas", [{}])
 
 
-def compare_types(actual, expected):
-    res, err = same_types(actual, expected)
-    if not res:
-        print(err)
-        print(actual)
-        print(expected)
-    assert res, err
-
-
 def make_same_rpc_calls(rpc1, rpc2, method, params):
     res1 = rpc1.make_request(method, params)
     res2 = rpc2.make_request(method, params)
-    compare_types(res1, res2)
+    res, err = same_types(res1, res2)
+    assert res, err
 
 
 def test_incomplete_send_transaction(ethermint_rpc_ws, geth):
@@ -364,6 +363,7 @@ def test_incomplete_send_transaction(ethermint_rpc_ws, geth):
 
 
 def same_types(object_a, object_b):
+
     if isinstance(object_a, dict):
         if not isinstance(object_b, dict):
             return False, "A is dict, B is not"

@@ -369,8 +369,8 @@ func (k Keeper) TraceTx(c context.Context, req *types.QueryTraceTxRequest) (*typ
 		return nil, status.Errorf(codes.InvalidArgument, "output limit cannot be negative, got %d", req.TraceConfig.Limit)
 	}
 
-	// get the context of block beginning
-	contextHeight := req.BlockNumber
+	// minus one to get the context of block beginning
+	contextHeight := req.BlockNumber - 1
 	if contextHeight < 1 {
 		// 0 is a special value in `ContextWithHeight`
 		contextHeight = 1
@@ -440,8 +440,8 @@ func (k Keeper) TraceBlock(c context.Context, req *types.QueryTraceBlockRequest)
 		return nil, status.Errorf(codes.InvalidArgument, "output limit cannot be negative, got %d", req.TraceConfig.Limit)
 	}
 
-	// get the context of block beginning
-	contextHeight := req.BlockNumber
+	// minus one to get the context of block beginning
+	contextHeight := req.BlockNumber - 1
 	if contextHeight < 1 {
 		// 0 is a special value in `ContextWithHeight`
 		contextHeight = 1
@@ -594,9 +594,9 @@ func (k Keeper) BaseFee(c context.Context, _ *types.QueryBaseFeeRequest) (*types
 }
 
 // getChainID parse chainID from current context if not provided
-func getChainID(ctx sdk.Context, chainID int64) (*big.Int, error) {
-	if chainID == 0 {
+func getChainID(ctx sdk.Context, chainID *sdkmath.Int) (*big.Int, error) {
+	if chainID == nil {
 		return ethermint.ParseChainID(ctx.ChainID())
 	}
-	return big.NewInt(chainID), nil
+	return chainID.BigInt(), nil
 }

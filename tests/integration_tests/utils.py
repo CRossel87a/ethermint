@@ -28,9 +28,7 @@ ETHERMINT_ADDRESS_PREFIX = "ethm"
 TEST_CONTRACTS = {
     "TestERC20A": "TestERC20A.sol",
     "Greeter": "Greeter.sol",
-    "TestChainID": "ChainID.sol",
     "TestExploitContract": "TestExploitContract.sol",
-    "StateContract": "StateContract.sol",
 }
 
 
@@ -65,21 +63,22 @@ def wait_for_port(port, host="127.0.0.1", timeout=40.0):
                 ) from ex
 
 
-def w3_wait_for_new_blocks(w3, n, sleep=0.5):
+def w3_wait_for_new_blocks(w3, n):
     begin_height = w3.eth.block_number
     while True:
-        time.sleep(sleep)
+        time.sleep(0.5)
         cur_height = w3.eth.block_number
         if cur_height - begin_height >= n:
             break
 
 
-def wait_for_new_blocks(cli, n, sleep=0.5):
-    cur_height = begin_height = int((cli.status())["SyncInfo"]["latest_block_height"])
-    while cur_height - begin_height < n:
-        time.sleep(sleep)
+def wait_for_new_blocks(cli, n):
+    begin_height = int((cli.status())["SyncInfo"]["latest_block_height"])
+    while True:
+        time.sleep(0.5)
         cur_height = int((cli.status())["SyncInfo"]["latest_block_height"])
-    return cur_height
+        if cur_height - begin_height >= n:
+            break
 
 
 def wait_for_block(cli, height, timeout=240):
@@ -123,26 +122,18 @@ def wait_for_block_time(cli, t):
         time.sleep(0.5)
 
 
-def deploy_contract_with_receipt(w3, jsonfile, args=(), key=KEYS["validator"]):
+def deploy_contract(w3, jsonfile, args=(), key=KEYS["validator"]):
     """
     deploy contract and return the deployed contract instance
     """
     acct = Account.from_key(key)
     info = json.loads(jsonfile.read_text())
     contract = w3.eth.contract(abi=info["abi"], bytecode=info["bytecode"])
-    tx = contract.constructor(*args).build_transaction({"from": acct.address})
+    tx = contract.constructor(*args).buildTransaction({"from": acct.address})
     txreceipt = send_transaction(w3, tx, key)
     assert txreceipt.status == 1
     address = txreceipt.contractAddress
-    return w3.eth.contract(address=address, abi=info["abi"]), txreceipt
-
-
-def deploy_contract(w3, jsonfile, args=(), key=KEYS["validator"]):
-    """
-    deploy contract and return the deployed contract instance
-    """
-    contract, _ = deploy_contract_with_receipt(w3, jsonfile, args, key)
-    return contract
+    return w3.eth.contract(address=address, abi=info["abi"])
 
 
 def fill_defaults(w3, tx):
@@ -187,11 +178,6 @@ def eth_to_bech32(addr, prefix=ETHERMINT_ADDRESS_PREFIX):
     return bech32.bech32_encode(prefix, bz)
 
 
-def decode_bech32(addr):
-    _, bz = bech32.bech32_decode(addr)
-    return HexBytes(bytes(bech32.convertbits(bz, 5, 8)))
-
-
 def supervisorctl(inipath, *args):
     subprocess.run(
         (sys.executable, "-msupervisor.supervisorctl", "-c", inipath, *args),
@@ -204,10 +190,3 @@ def parse_events(logs):
         ev["type"]: {attr["key"]: attr["value"] for attr in ev["attributes"]}
         for ev in logs[0]["events"]
     }
-
-
-def derive_new_account(n=1):
-    # derive a new address
-    account_path = f"m/44'/60'/0'/0/{n}"
-    mnemonic = os.getenv("COMMUNITY_MNEMONIC")
-    return Account.from_mnemonic(mnemonic, account_path=account_path)

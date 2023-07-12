@@ -156,7 +156,7 @@ def test_balance(ethermint_rpc_ws, geth):
 
 
 def deploy_and_wait(w3, number=1):
-    contract = deploy_contract(
+    contract, _ = deploy_contract(
         w3,
         CONTRACTS["TestERC20A"],
     )
@@ -363,36 +363,45 @@ def test_incomplete_send_transaction(ethermint_rpc_ws, geth):
     make_same_rpc_calls(eth_rpc, geth_rpc, "eth_sendTransaction", [tx])
 
 
-def same_types(object_a, object_b):
-    if isinstance(object_a, dict):
-        if not isinstance(object_b, dict):
+def same_types(given, expected):
+    if isinstance(given, dict):
+        if not isinstance(expected, dict):
             return False, "A is dict, B is not"
-        keys = list(set(list(object_a.keys()) + list(object_b.keys())))
+        keys = list(set(list(given.keys()) + list(expected.keys())))
         for key in keys:
-            if key in object_b and key in object_a:
-                if not same_types(object_a[key], object_b[key]):
-                    return False, key + " key on dict are not of same type"
-            else:
-                return False, key + " key on json is not in both results"
+            if key not in expected or key not in given:
+                return False, key + " key not on both json"
+            res, err = same_types(given[key], expected[key])
+            if not res:
+                return res, key + " key failed. Error: " + err
         return True, ""
-    elif isinstance(object_a, list):
-        if not isinstance(object_b, list):
+    elif isinstance(given, list):
+        if not isinstance(expected, list):
             return False, "A is list, B is not"
-        if len(object_a) == 0 and len(object_b) == 0:
+        if len(given) == 0 and len(expected) == 0:
             return True, ""
-        if len(object_a) > 0 and len(object_b) > 0:
-            return same_types(object_a[0], object_b[0])
+        if len(given) > 0 and len(expected) > 0:
+            return same_types(given[0], expected[0])
         else:
-            return True
-    elif object_a is None and object_b is None:
+            return True, ""
+    elif given is None and expected is None:
         return True, ""
-    elif type(object_a) is type(object_b):
+    elif type(given) is type(expected):
+        return True, ""
+    elif (
+        type(given) is int
+        and type(expected) is float
+        and given == 0
+        or type(expected) is int
+        and type(given) is float
+        and expected == 0
+    ):
         return True, ""
     else:
         return (
             False,
-            "different types. A is type "
-            + type(object_a).__name__
-            + " B is type "
-            + type(object_b).__name__,
+            "different types. Given object is type "
+            + type(given).__name__
+            + " expected object is type "
+            + type(expected).__name__,
         )

@@ -1,28 +1,71 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package eip712
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"math/big"
-	"reflect"
-	"strings"
-	"time"
 
-	sdkmath "cosmossdk.io/math"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/cosmos-sdk/types/tx"
+	"github.com/cosmos/cosmos-sdk/x/auth/migrations/legacytx"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	evmtypes "github.com/evmos/ethermint/x/evm/types"
 )
+
+// ConstructUntypedEIP712Data returns the bytes to sign for a transaction.
+func ConstructUntypedEIP712Data(
+	chainID string,
+	accnum, sequence, timeout uint64,
+	fee legacytx.StdFee,
+	msgs []sdk.Msg,
+	memo string,
+	tip *tx.Tip,
+) []byte {
+	signBytes := legacytx.StdSignBytes(chainID, accnum, sequence, timeout, fee, msgs, memo, tip)
+	var inInterface map[string]interface{}
+	err := json.Unmarshal(signBytes, &inInterface)
+	if err != nil {
+		panic(err)
+	}
+
+	// remove msgs from the sign doc since we will be adding them as separate fields
+	delete(inInterface, "msgs")
+
+	// Add messages as separate fields
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+		legacyMsg, ok := msg.(legacytx.LegacyMsg)
+		if !ok {
+			panic(fmt.Errorf("expected %T when using amino JSON", (*legacytx.LegacyMsg)(nil)))
+		}
+		msgsBytes := json.RawMessage(legacyMsg.GetSignBytes())
+		inInterface[fmt.Sprintf("msg%d", i+1)] = msgsBytes
+	}
+
+	bz, err := json.Marshal(inInterface)
+	if err != nil {
+		panic(err)
+	}
+	return sdk.MustSortJSON(bz)
+}
 
 // ComputeTypedDataHash computes keccak hash of typed data for signing.
 func ComputeTypedDataHash(typedData apitypes.TypedData) ([]byte, error) {
@@ -45,11 +88,11 @@ func ComputeTypedDataHash(typedData apitypes.TypedData) ([]byte, error) {
 // WrapTxToTypedData is an ultimate method that wraps Amino-encoded Cosmos Tx JSON data
 // into an EIP712-compatible TypedData request.
 func WrapTxToTypedData(
-	cdc codectypes.AnyUnpacker,
 	chainID uint64,
-	msg sdk.Msg,
+	msgs []sdk.Msg,
 	data []byte,
 	feeDelegation *FeeDelegationOptions,
+	params evmtypes.Params,
 ) (apitypes.TypedData, error) {
 	txData := make(map[string]interface{})
 
@@ -57,15 +100,9 @@ func WrapTxToTypedData(
 		return apitypes.TypedData{}, sdkerrors.Wrap(sdkerrors.ErrJSONUnmarshal, "failed to JSON unmarshal data")
 	}
 
-	domain := apitypes.TypedDataDomain{
-		Name:              "Cosmos Web3",
-		Version:           "1.0.0",
-		ChainId:           math.NewHexOrDecimal256(int64(chainID)),
-		VerifyingContract: "cosmos",
-		Salt:              "0",
-	}
+	domain := getTypedDataDomain(chainID)
 
-	msgTypes, err := extractMsgTypes(cdc, "MsgValue", msg)
+	msgTypes, err := extractMsgTypes(msgs, params)
 	if err != nil {
 		return apitypes.TypedData{}, err
 	}
@@ -100,376 +137,71 @@ type FeeDelegationOptions struct {
 	FeePayer sdk.AccAddress
 }
 
-func extractMsgTypes(cdc codectypes.AnyUnpacker, msgTypeName string, msg sdk.Msg) (apitypes.Types, error) {
-	rootTypes := apitypes.Types{
-		"EIP712Domain": {
-			{
-				Name: "name",
-				Type: "string",
-			},
-			{
-				Name: "version",
-				Type: "string",
-			},
-			{
-				Name: "chainId",
-				Type: "uint256",
-			},
-			{
-				Name: "verifyingContract",
-				Type: "string",
-			},
-			{
-				Name: "salt",
-				Type: "string",
-			},
-		},
-		"Tx": {
-			{Name: "account_number", Type: "string"},
-			{Name: "chain_id", Type: "string"},
-			{Name: "fee", Type: "Fee"},
-			{Name: "memo", Type: "string"},
-			{Name: "msgs", Type: "Msg[]"},
-			{Name: "sequence", Type: "string"},
-			// Note timeout_height was removed because it was not getting filled with the legacyTx
-			// {Name: "timeout_height", Type: "string"},
-		},
-		"Fee": {
-			{Name: "amount", Type: "Coin[]"},
-			{Name: "gas", Type: "string"},
-		},
-		"Coin": {
-			{Name: "denom", Type: "string"},
-			{Name: "amount", Type: "string"},
-		},
-		"Msg": {
+func extractMsgTypes(msgs []sdk.Msg, params evmtypes.Params) (apitypes.Types, error) {
+	rootTypes := getRootTypes()
+
+	// Add types each message
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
+		msgAttrName := fmt.Sprintf("msg%d", i+1)
+		msgTypeName := fmt.Sprintf("Msg%d", i+1)
+
+		// ensure eip712 messages implement legacytx.LegacyMsg
+		_, ok := msg.(legacytx.LegacyMsg)
+		if !ok {
+			err := sdkerrors.Wrapf(sdkerrors.ErrInvalidType, "msg %T must implement legacytx.LegacyMsg", (*legacytx.LegacyMsg)(nil))
+			return apitypes.Types{}, err
+		}
+
+		// get corresponding allowed msg from params
+		msgType := sdk.MsgTypeURL(msg)
+		allowedMsg := params.EIP712AllowedMsgFromMsgType(msgType)
+		if allowedMsg == nil {
+			err := sdkerrors.Wrapf(
+				sdkerrors.ErrInvalidType,
+				"eip712 message type \"%s\" is not permitted",
+				msgType,
+			)
+			return apitypes.Types{}, err
+		}
+
+		// Add msg property to tx
+		txMsgType := apitypes.Type{Name: msgAttrName, Type: msgTypeName}
+		rootTypes["Tx"] = append(rootTypes["Tx"], txMsgType)
+
+		// Add msg type to root types
+		msgValueTypeName := allowedMsg.MsgValueTypeName
+		rootTypes[msgTypeName] = []apitypes.Type{
 			{Name: "type", Type: "string"},
-			{Name: "value", Type: msgTypeName},
-		},
-		msgTypeName: {},
-	}
+			{Name: "value", Type: msgValueTypeName},
+		}
 
-	if err := walkFields(cdc, rootTypes, msgTypeName, msg); err != nil {
-		return nil, err
-	}
+		// Add msg value type and nested types
+		if rootTypes[msgValueTypeName] == nil && allowedMsg != nil {
+			// add msg value type
+			rootTypes[msgValueTypeName] = msgAttrsToEIP712Types(allowedMsg.ValueTypes)
 
+			// add nested types
+			for _, nestedType := range allowedMsg.NestedTypes {
+				nestedTypeName := nestedType.Name
+				if rootTypes[nestedTypeName] == nil {
+					rootTypes[nestedTypeName] = msgAttrsToEIP712Types(nestedType.Attrs)
+				}
+			}
+		}
+	}
 	return rootTypes, nil
 }
 
-const typeDefPrefix = "_"
-
-func walkFields(cdc codectypes.AnyUnpacker, typeMap apitypes.Types, rootType string, in interface{}) (err error) {
-	defer doRecover(&err)
-
-	t := reflect.TypeOf(in)
-	v := reflect.ValueOf(in)
-
-	for {
-		if t.Kind() == reflect.Ptr ||
-			t.Kind() == reflect.Interface {
-			t = t.Elem()
-			v = v.Elem()
-
-			continue
+// msgAttrsToEIP712Types converts a slice of EIP712MsgAttrType to a slice of apitypes.Type.
+func msgAttrsToEIP712Types(attrTypes []evmtypes.EIP712MsgAttrType) []apitypes.Type {
+	msgTypes := make([]apitypes.Type, len(attrTypes))
+	for i, attrType := range attrTypes {
+		apitypes := apitypes.Type{
+			Name: attrType.Name,
+			Type: attrType.Type,
 		}
-
-		break
+		msgTypes[i] = apitypes
 	}
-
-	return traverseFields(cdc, typeMap, rootType, typeDefPrefix, t, v)
-}
-
-type cosmosAnyWrapper struct {
-	Type  string      `json:"type"`
-	Value interface{} `json:"value"`
-}
-
-func traverseFields(
-	cdc codectypes.AnyUnpacker,
-	typeMap apitypes.Types,
-	rootType string,
-	prefix string,
-	t reflect.Type,
-	v reflect.Value,
-) error {
-	n := t.NumField()
-
-	if prefix == typeDefPrefix {
-		if len(typeMap[rootType]) == n {
-			return nil
-		}
-	} else {
-		typeDef := sanitizeTypedef(prefix)
-		if len(typeMap[typeDef]) == n {
-			return nil
-		}
-	}
-
-	for i := 0; i < n; i++ {
-		var field reflect.Value
-		if v.IsValid() {
-			field = v.Field(i)
-		}
-
-		fieldType := t.Field(i).Type
-		fieldName := jsonNameFromTag(t.Field(i).Tag)
-
-		if fieldType == cosmosAnyType {
-			any, ok := field.Interface().(*codectypes.Any)
-			if !ok {
-				return sdkerrors.Wrapf(sdkerrors.ErrPackAny, "%T", field.Interface())
-			}
-
-			anyWrapper := &cosmosAnyWrapper{
-				Type: any.TypeUrl,
-			}
-
-			if err := cdc.UnpackAny(any, &anyWrapper.Value); err != nil {
-				return sdkerrors.Wrap(err, "failed to unpack Any in msg struct")
-			}
-
-			fieldType = reflect.TypeOf(anyWrapper)
-			field = reflect.ValueOf(anyWrapper)
-
-			// then continue as normal
-		}
-
-		// If its a nil pointer, do not include in types
-		if fieldType.Kind() == reflect.Ptr && field.IsNil() {
-			continue
-		}
-
-		for {
-			if fieldType.Kind() == reflect.Ptr {
-				fieldType = fieldType.Elem()
-
-				if field.IsValid() {
-					field = field.Elem()
-				}
-
-				continue
-			}
-
-			if fieldType.Kind() == reflect.Interface {
-				fieldType = reflect.TypeOf(field.Interface())
-				continue
-			}
-
-			if field.Kind() == reflect.Ptr {
-				field = field.Elem()
-				continue
-			}
-
-			break
-		}
-
-		var isCollection bool
-		if fieldType.Kind() == reflect.Array || fieldType.Kind() == reflect.Slice {
-			if field.Len() == 0 {
-				// skip empty collections from type mapping
-				continue
-			}
-
-			fieldType = fieldType.Elem()
-			field = field.Index(0)
-			isCollection = true
-		}
-
-		for {
-			if fieldType.Kind() == reflect.Ptr {
-				fieldType = fieldType.Elem()
-
-				if field.IsValid() {
-					field = field.Elem()
-				}
-
-				continue
-			}
-
-			if fieldType.Kind() == reflect.Interface {
-				fieldType = reflect.TypeOf(field.Interface())
-				continue
-			}
-
-			if field.Kind() == reflect.Ptr {
-				field = field.Elem()
-				continue
-			}
-
-			break
-		}
-
-		fieldPrefix := fmt.Sprintf("%s.%s", prefix, fieldName)
-
-		ethTyp := typToEth(fieldType)
-		if len(ethTyp) > 0 {
-			// Support array of uint64
-			if isCollection && fieldType.Kind() != reflect.Slice && fieldType.Kind() != reflect.Array {
-				ethTyp += "[]"
-			}
-
-			if prefix == typeDefPrefix {
-				typeMap[rootType] = append(typeMap[rootType], apitypes.Type{
-					Name: fieldName,
-					Type: ethTyp,
-				})
-			} else {
-				typeDef := sanitizeTypedef(prefix)
-				typeMap[typeDef] = append(typeMap[typeDef], apitypes.Type{
-					Name: fieldName,
-					Type: ethTyp,
-				})
-			}
-
-			continue
-		}
-
-		if fieldType.Kind() == reflect.Struct {
-			var fieldTypedef string
-
-			if isCollection {
-				fieldTypedef = sanitizeTypedef(fieldPrefix) + "[]"
-			} else {
-				fieldTypedef = sanitizeTypedef(fieldPrefix)
-			}
-
-			if prefix == typeDefPrefix {
-				typeMap[rootType] = append(typeMap[rootType], apitypes.Type{
-					Name: fieldName,
-					Type: fieldTypedef,
-				})
-			} else {
-				typeDef := sanitizeTypedef(prefix)
-				typeMap[typeDef] = append(typeMap[typeDef], apitypes.Type{
-					Name: fieldName,
-					Type: fieldTypedef,
-				})
-			}
-
-			if err := traverseFields(cdc, typeMap, rootType, fieldPrefix, fieldType, field); err != nil {
-				return err
-			}
-
-			continue
-		}
-	}
-
-	return nil
-}
-
-func jsonNameFromTag(tag reflect.StructTag) string {
-	jsonTags := tag.Get("json")
-	parts := strings.Split(jsonTags, ",")
-	return parts[0]
-}
-
-// _.foo_bar.baz -> TypeFooBarBaz
-//
-// this is needed for Geth's own signing code which doesn't
-// tolerate complex type names
-func sanitizeTypedef(str string) string {
-	buf := new(bytes.Buffer)
-	parts := strings.Split(str, ".")
-	caser := cases.Title(language.English, cases.NoLower)
-
-	for _, part := range parts {
-		if part == "_" {
-			buf.WriteString("Type")
-			continue
-		}
-
-		subparts := strings.Split(part, "_")
-		for _, subpart := range subparts {
-			buf.WriteString(caser.String(subpart))
-		}
-	}
-
-	return buf.String()
-}
-
-var (
-	hashType      = reflect.TypeOf(common.Hash{})
-	addressType   = reflect.TypeOf(common.Address{})
-	bigIntType    = reflect.TypeOf(big.Int{})
-	cosmIntType   = reflect.TypeOf(sdkmath.Int{})
-	cosmDecType   = reflect.TypeOf(sdk.Dec{})
-	cosmosAnyType = reflect.TypeOf(&codectypes.Any{})
-	timeType      = reflect.TypeOf(time.Time{})
-
-	edType = reflect.TypeOf(ed25519.PubKey{})
-)
-
-// typToEth supports only basic types and arrays of basic types.
-// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-712.md
-func typToEth(typ reflect.Type) string {
-	const str = "string"
-
-	switch typ.Kind() {
-	case reflect.String:
-		return str
-	case reflect.Bool:
-		return "bool"
-	case reflect.Int:
-		return "int64"
-	case reflect.Int8:
-		return "int8"
-	case reflect.Int16:
-		return "int16"
-	case reflect.Int32:
-		return "int32"
-	case reflect.Int64:
-		return "int64"
-	case reflect.Uint:
-		return "uint64"
-	case reflect.Uint8:
-		return "uint8"
-	case reflect.Uint16:
-		return "uint16"
-	case reflect.Uint32:
-		return "uint32"
-	case reflect.Uint64:
-		return "uint64"
-	case reflect.Slice:
-		ethName := typToEth(typ.Elem())
-		if len(ethName) > 0 {
-			return ethName + "[]"
-		}
-	case reflect.Array:
-		ethName := typToEth(typ.Elem())
-		if len(ethName) > 0 {
-			return ethName + "[]"
-		}
-	case reflect.Ptr:
-		if typ.Elem().ConvertibleTo(bigIntType) ||
-			typ.Elem().ConvertibleTo(timeType) ||
-			typ.Elem().ConvertibleTo(edType) ||
-			typ.Elem().ConvertibleTo(cosmDecType) ||
-			typ.Elem().ConvertibleTo(cosmIntType) {
-			return str
-		}
-	case reflect.Struct:
-		if typ.ConvertibleTo(hashType) ||
-			typ.ConvertibleTo(addressType) ||
-			typ.ConvertibleTo(bigIntType) ||
-			typ.ConvertibleTo(edType) ||
-			typ.ConvertibleTo(timeType) ||
-			typ.ConvertibleTo(cosmDecType) ||
-			typ.ConvertibleTo(cosmIntType) {
-			return str
-		}
-	}
-
-	return ""
-}
-
-func doRecover(err *error) {
-	if r := recover(); r != nil {
-		if e, ok := r.(error); ok {
-			e = sdkerrors.Wrap(e, "panicked with error")
-			*err = e
-			return
-		}
-
-		*err = fmt.Errorf("%v", r)
-	}
+	return msgTypes
 }

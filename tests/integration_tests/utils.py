@@ -28,16 +28,16 @@ ETHERMINT_ADDRESS_PREFIX = "ethm"
 TEST_CONTRACTS = {
     "TestERC20A": "TestERC20A.sol",
     "Greeter": "Greeter.sol",
+    "BurnGas": "BurnGas.sol",
     "TestChainID": "ChainID.sol",
-    "TestExploitContract": "TestExploitContract.sol",
-    "StateContract": "StateContract.sol",
+    "Mars": "Mars.sol",
 }
 
 
 def contract_path(name, filename):
     return (
         Path(__file__).parent
-        / "contracts/artifacts/contracts/"
+        / "hardhat/artifacts/contracts/"
         / filename
         / (name + ".json")
     )
@@ -83,7 +83,7 @@ def wait_for_new_blocks(cli, n, sleep=0.5):
 
 
 def wait_for_block(cli, height, timeout=240):
-    for i in range(timeout * 2):
+    for _ in range(timeout * 2):
         try:
             status = cli.status()
         except AssertionError as e:
@@ -99,7 +99,7 @@ def wait_for_block(cli, height, timeout=240):
 
 
 def w3_wait_for_block(w3, height, timeout=240):
-    for i in range(timeout * 2):
+    for _ in range(timeout * 2):
         try:
             current_height = w3.eth.block_number
         except Exception as e:
@@ -117,13 +117,13 @@ def wait_for_block_time(cli, t):
     print("wait for block time", t)
     while True:
         now = isoparse((cli.status())["SyncInfo"]["latest_block_time"])
-        print("block time now:", now)
+        print("block time now: ", now)
         if now >= t:
             break
         time.sleep(0.5)
 
 
-def deploy_contract_with_receipt(w3, jsonfile, args=(), key=KEYS["validator"]):
+def deploy_contract(w3, jsonfile, args=(), key=KEYS["validator"]):
     """
     deploy contract and return the deployed contract instance
     """
@@ -135,14 +135,6 @@ def deploy_contract_with_receipt(w3, jsonfile, args=(), key=KEYS["validator"]):
     assert txreceipt.status == 1
     address = txreceipt.contractAddress
     return w3.eth.contract(address=address, abi=info["abi"]), txreceipt
-
-
-def deploy_contract(w3, jsonfile, args=(), key=KEYS["validator"]):
-    """
-    deploy contract and return the deployed contract instance
-    """
-    contract, _ = deploy_contract_with_receipt(w3, jsonfile, args, key)
-    return contract
 
 
 def fill_defaults(w3, tx):
@@ -204,10 +196,3 @@ def parse_events(logs):
         ev["type"]: {attr["key"]: attr["value"] for attr in ev["attributes"]}
         for ev in logs[0]["events"]
     }
-
-
-def derive_new_account(n=1):
-    # derive a new address
-    account_path = f"m/44'/60'/0'/0/{n}"
-    mnemonic = os.getenv("COMMUNITY_MNEMONIC")
-    return Account.from_mnemonic(mnemonic, account_path=account_path)

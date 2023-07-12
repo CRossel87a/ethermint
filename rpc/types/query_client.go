@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
@@ -46,6 +61,9 @@ func (QueryClient) GetProof(clientCtx client.Context, storeKey string, key []byt
 	if height <= 2 {
 		return nil, nil, fmt.Errorf("proof queries at height <= 2 are not supported")
 	}
+
+	// Use the IAVL height if a valid tendermint height is passed in.
+	height--
 
 	abciReq := abci.RequestQuery{
 		Path:   fmt.Sprintf("store/%s/key", storeKey),

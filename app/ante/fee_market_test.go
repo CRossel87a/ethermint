@@ -19,6 +19,20 @@ func (suite AnteTestSuite) TestGasWantedDecorator() {
 	from, fromPrivKey := tests.NewAddrKey()
 	to := tests.GenerateAddress()
 
+	params := suite.app.EvmKeeper.GetParams(suite.ctx)
+	params.EIP712AllowedMsgs = []evmtypes.EIP712AllowedMsg{
+		{
+			MsgTypeUrl:       "/cosmos.bank.v1beta1.MsgSend",
+			MsgValueTypeName: "MsgValueSend",
+			ValueTypes: []evmtypes.EIP712MsgAttrType{
+				{Name: "from_address", Type: "string"},
+				{Name: "to_address", Type: "string"},
+				{Name: "amount", Type: "Coin[]"},
+			},
+		},
+	}
+	suite.app.EvmKeeper.SetParams(suite.ctx, params)
+
 	testCases := []struct {
 		name              string
 		expectedGasWanted uint64

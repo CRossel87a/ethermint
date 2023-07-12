@@ -34,7 +34,7 @@ def test_pruned_node(pruned):
     test basic json-rpc apis works in pruned node
     """
     w3 = pruned.w3
-    erc20 = deploy_contract(
+    erc20, _ = deploy_contract(
         w3,
         CONTRACTS["TestERC20A"],
         key=KEYS["validator"],
@@ -45,7 +45,7 @@ def test_pruned_node(pruned):
     signed = sign_transaction(w3, tx, KEYS["validator"])
     txhash = w3.eth.send_raw_transaction(signed.rawTransaction)
     print("wait for prunning happens")
-    w3_wait_for_new_blocks(w3, 10)
+    w3_wait_for_new_blocks(w3, 15)
 
     tx_receipt = w3.eth.get_transaction_receipt(txhash.hex())
     assert len(tx_receipt.logs) == 1
@@ -103,7 +103,7 @@ def test_pruned_node(pruned):
     exp_tx = AttributeDict(
         {
             "from": "0x57f96e6B86CdeFdB3d412547816a82E3E0EbF9D2",
-            "gas": 51542,
+            "gas": 51406,
             "input": (
                 "0xa9059cbb000000000000000000000000378c50d9264c63f3f92b806d4ee56e"
                 "9d86ffb3ec000000000000000000000000000000000000000000000000000000"

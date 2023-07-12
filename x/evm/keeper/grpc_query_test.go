@@ -405,6 +405,7 @@ func (suite *KeeperTestSuite) TestQueryTxLogs() {
 func (suite *KeeperTestSuite) TestQueryParams() {
 	ctx := sdk.WrapSDKContext(suite.ctx)
 	expParams := types.DefaultParams()
+	expParams.EIP712AllowedMsgs = nil
 
 	res, err := suite.queryClient.Params(ctx, &types.QueryParamsRequest{})
 	suite.Require().NoError(err)
@@ -540,7 +541,8 @@ func (suite *KeeperTestSuite) TestEstimateGas() {
 			"enough balance",
 			func() {
 				args = types.TransactionArgs{To: &common.Address{}, From: &suite.address, Value: (*hexutil.Big)(big.NewInt(100))}
-			}, false, 0, false},
+			}, false, 0, false,
+		},
 		// should success, because gas limit lower than 21000 is ignored
 		{
 			"gas exceed allowance",
@@ -888,18 +890,6 @@ func (suite *KeeperTestSuite) TestTraceTx() {
 			expPass: false,
 		},
 		{
-			msg: "trace config - Execution Timeout",
-			malleate: func() {
-				traceConfig = &types.TraceConfig{
-					DisableStack:   true,
-					DisableStorage: true,
-					EnableMemory:   false,
-					Timeout:        "0s",
-				}
-			},
-			expPass: false,
-		},
-		{
 			msg: "default tracer with contract creation tx as predecessor but 'create' param disabled",
 			malleate: func() {
 				traceConfig = nil
@@ -955,8 +945,6 @@ func (suite *KeeperTestSuite) TestTraceTx() {
 			// Generate token transfer transaction
 			txMsg = suite.TransferERC20Token(suite.T(), contractAddr, suite.address, common.HexToAddress("0x378c50D9264C63F3F92B806d4ee56E9D86FfB3Ec"), sdkmath.NewIntWithDecimal(1, 18).BigInt())
 			suite.Commit()
-
-			chainID = nil
 
 			tc.malleate()
 			traceReq := types.QueryTraceTxRequest{
@@ -1133,7 +1121,6 @@ func (suite *KeeperTestSuite) TestTraceBlock() {
 			// Generate token transfer transaction
 			txMsg := suite.TransferERC20Token(suite.T(), contractAddr, suite.address, common.HexToAddress("0x378c50D9264C63F3F92B806d4ee56E9D86FfB3Ec"), sdkmath.NewIntWithDecimal(1, 18).BigInt())
 			suite.Commit()
-			chainID = nil
 
 			txs = append(txs, txMsg)
 
@@ -1276,9 +1263,7 @@ func (suite *KeeperTestSuite) TestQueryBaseFee() {
 }
 
 func (suite *KeeperTestSuite) TestEthCall() {
-	var (
-		req *types.EthCallRequest
-	)
+	var req *types.EthCallRequest
 
 	address := tests.GenerateAddress()
 	suite.Require().Equal(uint64(0), suite.app.EvmKeeper.GetNonce(suite.ctx, address))
@@ -1349,7 +1334,6 @@ func (suite *KeeperTestSuite) TestEthCall() {
 			}
 		})
 	}
-
 }
 
 func (suite *KeeperTestSuite) TestEmptyRequest() {

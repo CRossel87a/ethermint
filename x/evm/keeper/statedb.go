@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package keeper
 
 import (
@@ -6,9 +21,10 @@ import (
 
 	sdkmath "cosmossdk.io/math"
 
+	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/store/prefix"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethermint "github.com/evmos/ethermint/types"
 	"github.com/evmos/ethermint/x/evm/statedb"
@@ -116,10 +132,22 @@ func (k *Keeper) SetAccount(ctx sdk.Context, addr common.Address, account stated
 	}
 
 	codeHash := common.BytesToHash(account.CodeHash)
+	ethAcct, ok := acct.(ethermint.EthAccountI)
 
-	if ethAcct, ok := acct.(ethermint.EthAccountI); ok {
+	if ok {
 		if err := ethAcct.SetCodeHash(codeHash); err != nil {
 			return err
+		}
+	}
+
+	if !ok && account.IsContract() {
+		if baseAcct, isBaseAccount := acct.(*authtypes.BaseAccount); isBaseAccount {
+			acct = &ethermint.EthAccount{
+				BaseAccount: baseAcct,
+				CodeHash:    codeHash.Hex(),
+			}
+		} else {
+			return errorsmod.Wrapf(types.ErrInvalidAccount, "type %T, address %s", acct, addr)
 		}
 	}
 
@@ -189,7 +217,7 @@ func (k *Keeper) DeleteAccount(ctx sdk.Context, addr common.Address) error {
 	// NOTE: only Ethereum accounts (contracts) can be selfdestructed
 	_, ok := acct.(ethermint.EthAccountI)
 	if !ok {
-		return sdkerrors.Wrapf(types.ErrInvalidAccount, "type %T, address %s", acct, addr)
+		return errorsmod.Wrapf(types.ErrInvalidAccount, "type %T, address %s", acct, addr)
 	}
 
 	// clear balance

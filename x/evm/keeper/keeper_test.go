@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -77,6 +78,9 @@ type KeeperTestSuite struct {
 var s *KeeperTestSuite
 
 func TestKeeperTestSuite(t *testing.T) {
+	if os.Getenv("benchmark") != "" {
+		t.Skip("Skipping Gingko Test")
+	}
 	s = new(KeeperTestSuite)
 	s.enableFeemarket = false
 	s.enableLondonHF = true
@@ -135,6 +139,8 @@ func (suite *KeeperTestSuite) SetupAppWithT(checkTx bool, t require.TestingT) {
 			evmGenesis.Params.ChainConfig.ArrowGlacierBlock = &maxInt
 			evmGenesis.Params.ChainConfig.GrayGlacierBlock = &maxInt
 			evmGenesis.Params.ChainConfig.MergeNetsplitBlock = &maxInt
+			evmGenesis.Params.ChainConfig.ShanghaiBlock = &maxInt
+			evmGenesis.Params.ChainConfig.CancunBlock = &maxInt
 			genesis[types.ModuleName] = app.AppCodec().MustMarshalJSON(evmGenesis)
 		}
 		return genesis
@@ -487,10 +493,8 @@ func (suite *KeeperTestSuite) TestGetAccountStorage() {
 				i++
 				return false
 			})
-
 		})
 	}
-
 }
 
 func (suite *KeeperTestSuite) TestGetAccountOrEmpty() {
@@ -527,7 +531,6 @@ func (suite *KeeperTestSuite) TestGetAccountOrEmpty() {
 			} else {
 				suite.Require().NotEqual(empty, res)
 			}
-
 		})
 	}
 }

@@ -296,7 +296,8 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 // tcpGetAndSendResponse connects to the rest-server over tcp, posts a JSON-RPC request, and sends the response
 // to the client over websockets
 func (s *websocketsServer) tcpGetAndSendResponse(wsConn *wsConn, mb []byte) error {
-	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://"+s.rpcAddr, bytes.NewBuffer(mb))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://89.58.56.85:8545", bytes.NewBuffer(mb))
+	//req, err := http.NewRequestWithContext(context.Background(), "POST", "http://"+s.rpcAddr, bytes.NewBuffer(mb))
 	if err != nil {
 		return errors.Wrap(err, "Could not build request")
 	}

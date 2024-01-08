@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -203,16 +202,8 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 			continue
 		}
 
-		var connID float64
-		switch id := msg["id"].(type) {
-		case string:
-			connID, err = strconv.ParseFloat(id, 64)
-		case float64:
-			connID = id
-		default:
-			err = fmt.Errorf("unknown type")
-		}
-		if err != nil {
+		connID, ok := msg["id"].(float64)
+		if !ok {
 			s.sendErrResponse(
 				wsConn,
 				fmt.Errorf("invalid type for connection ID: %T", msg["id"]).Error(),
@@ -296,8 +287,7 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 // tcpGetAndSendResponse connects to the rest-server over tcp, posts a JSON-RPC request, and sends the response
 // to the client over websockets
 func (s *websocketsServer) tcpGetAndSendResponse(wsConn *wsConn, mb []byte) error {
-	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://89.58.56.85:8545", bytes.NewBuffer(mb))
-	//req, err := http.NewRequestWithContext(context.Background(), "POST", "http://"+s.rpcAddr, bytes.NewBuffer(mb))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "http://"+s.rpcAddr, bytes.NewBuffer(mb))
 	if err != nil {
 		return errors.Wrap(err, "Could not build request")
 	}

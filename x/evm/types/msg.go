@@ -14,8 +14,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 
-	"github.com/evmos/ethermint/types"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -161,10 +159,9 @@ func (msg MsgEthereumTx) Type() string { return TypeMsgEthereumTx }
 // ValidateBasic implements the sdk.Msg interface. It performs basic validation
 // checks of a Transaction. If returns an error if validation fails.
 func (msg MsgEthereumTx) ValidateBasic() error {
-	if msg.From != "" {
-		if err := types.ValidateAddress(msg.From); err != nil {
-			return sdkerrors.Wrap(err, "invalid from address")
-		}
+
+	if len(msg.From) == 0 {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid from address")
 	}
 
 	// Validate Size_ field, should be kept empty
@@ -287,11 +284,7 @@ func (msg MsgEthereumTx) GetEffectiveFee(baseFee *big.Int) *big.Int {
 // GetFrom loads the ethereum sender address from the sigcache and returns an
 // sdk.AccAddress from its bytes
 func (msg *MsgEthereumTx) GetFrom() sdk.AccAddress {
-	if msg.From == "" {
-		return nil
-	}
-
-	return common.HexToAddress(msg.From).Bytes()
+	return sdk.AccAddress(msg.From)
 }
 
 // AsTransaction creates an Ethereum Transaction type from the msg fields
@@ -311,14 +304,18 @@ func (msg MsgEthereumTx) AsMessage(signer ethtypes.Signer, baseFee *big.Int) (co
 
 // GetSender extracts the sender address from the signature values using the latest signer for the given chainID.
 func (msg *MsgEthereumTx) GetSender(chainID *big.Int) (common.Address, error) {
-	signer := ethtypes.LatestSignerForChainID(chainID)
-	from, err := signer.Sender(msg.AsTransaction())
+	if len(msg.From) > 0 {
+		return common.BytesToAddress(msg.From), nil
+	}
+	sender, err := msg.recoverSender(chainID)
 	if err != nil {
 		return common.Address{}, err
 	}
-
-	msg.From = from.Hex()
-	return from, nil
+	msg.From = sender.Bytes()
+	return sender, nil
+}
+func (msg *MsgEthereumTx) recoverSender(chainID *big.Int) (common.Address, error) {
+	return ethtypes.LatestSignerForChainID(chainID).Sender(msg.AsTransaction())
 }
 
 // UnpackInterfaces implements UnpackInterfacesMesssage.UnpackInterfaces

@@ -67,7 +67,7 @@ func (esvd EthSigVerificationDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, s
 		}
 
 		// set up the sender to the transaction field if not already
-		msgEthTx.From = sender.Hex()
+		msgEthTx.From = sender.Bytes()
 	}
 
 	return next(ctx, tx, simulate)

@@ -49,7 +49,7 @@ type EVMBackend interface {
 	SetGasPrice(gasPrice hexutil.Big) bool
 	ImportRawKey(privkey, password string) (common.Address, error)
 	ListAccounts() ([]common.Address, error)
-	NewMnemonic(uid string, language keyring.Language, hdPath, bip39Passphrase string, algo keyring.SignatureAlgo) (keyring.Info, error)
+	NewMnemonic(uid string, language keyring.Language, hdPath, bip39Passphrase string, algo keyring.SignatureAlgo) (*keyring.Record, error)
 	UnprotectedAllowed() bool
 	RPCGasCap() uint64            // global gas cap for eth_call over rpc: DoS protection
 	RPCEVMTimeout() time.Duration // global timeout for eth_call over rpc: DoS protection

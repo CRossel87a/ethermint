@@ -171,7 +171,7 @@ func VerifySignature(
 				Amount: tx.GetFee(),
 				Gas:    tx.GetGas(),
 			},
-			msgs, tx.GetMemo(),
+			msgs, tx.GetMemo(), tx.GetTip(),
 		)
 
 		signerChainID, err := ethermint.ParseChainID(signerData.ChainID)

@@ -3,6 +3,7 @@ module github.com/evmos/ethermint
 go 1.18
 
 require (
+	cosmossdk.io/errors v1.0.0
 	cosmossdk.io/math v1.0.0-beta.3
 	github.com/armon/go-metrics v0.4.0
 	github.com/btcsuite/btcd v0.22.1

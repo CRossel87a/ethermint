@@ -23,7 +23,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 
-	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/types"
@@ -31,6 +30,7 @@ import (
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/evmos/ethermint/rpc"
 	"github.com/evmos/ethermint/rpc/stream"
+	rpcclient "github.com/tendermint/tendermint/rpc/client"
 
 	"github.com/evmos/ethermint/server/config"
 	ethermint "github.com/evmos/ethermint/types"

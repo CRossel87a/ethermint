@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
@@ -147,4 +148,10 @@ func BinSearch(lo, hi uint64, executable func(uint64) (bool, *MsgEthereumTxRespo
 		}
 	}
 	return hi, nil
+}
+func HexAddress(a []byte) string {
+	var buf [common.AddressLength*2 + 2]byte
+	copy(buf[:2], "0x")
+	hex.Encode(buf[2:], a)
+	return string(buf[:])
 }

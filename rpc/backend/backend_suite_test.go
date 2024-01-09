@@ -83,7 +83,7 @@ func (suite *BackendTestSuite) buildEthereumTx() (*evmtypes.MsgEthereumTx, []byt
 	)
 
 	// A valid msg should have empty `From`
-	msgEthereumTx.From = ""
+	//msgEthereumTx.From = suite.signerAddress
 
 	txBuilder := suite.backend.clientCtx.TxConfig.NewTxBuilder()
 	err := txBuilder.SetMsgs(msgEthereumTx)
@@ -142,5 +142,6 @@ func (suite *BackendTestSuite) buildFormattedBlock(
 
 func (suite *BackendTestSuite) generateTestKeyring(clientDir string) (keyring.Keyring, error) {
 	buf := bufio.NewReader(os.Stdin)
-	return keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, clientDir, buf, []keyring.Option{hd.EthSecp256k1Option()}...)
+	encCfg := encoding.MakeConfig(app.ModuleBasics)
+	return keyring.New(sdk.KeyringServiceName(), keyring.BackendTest, clientDir, buf, encCfg.Codec, []keyring.Option{hd.EthSecp256k1Option()}...)
 }

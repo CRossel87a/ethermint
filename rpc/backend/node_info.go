@@ -35,7 +35,11 @@ func (b *Backend) Accounts() ([]common.Address, error) {
 	}
 
 	for _, info := range infos {
-		addressBytes := info.GetPubKey().Address().Bytes()
+		pubKey, err := info.GetPubKey()
+		if err != nil {
+			return nil, err
+		}
+		addressBytes := pubKey.Address().Bytes()
 		addresses = append(addresses, common.BytesToAddress(addressBytes))
 	}
 
@@ -140,7 +144,7 @@ func (b *Backend) SetEtherbase(etherbase common.Address) bool {
 		return false
 	}
 
-	if err := tx.Sign(txFactory, keyInfo.GetName(), builder, false); err != nil {
+	if err := tx.Sign(txFactory, keyInfo.Name, builder, false); err != nil {
 		b.logger.Debug("failed to sign tx", "error", err.Error())
 		return false
 	}
@@ -217,15 +221,24 @@ func (b *Backend) ListAccounts() ([]common.Address, error) {
 	}
 
 	for _, info := range list {
-		addrs = append(addrs, common.BytesToAddress(info.GetPubKey().Address()))
+		pubKey, err := info.GetPubKey()
+		if err != nil {
+			return nil, err
+		}
+		addrs = append(addrs, common.BytesToAddress(pubKey.Address()))
 	}
 
 	return addrs, nil
 }
 
 // NewAccount will create a new account and returns the address for the new account.
-func (b *Backend) NewMnemonic(uid string, language keyring.Language, hdPath, bip39Passphrase string, algo keyring.SignatureAlgo) (keyring.Info, error) {
-	info, _, err := b.clientCtx.Keyring.NewMnemonic(uid, keyring.English, bip39Passphrase, bip39Passphrase, algo)
+func (b *Backend) NewMnemonic(uid string,
+	_ keyring.Language,
+	hdPath,
+	bip39Passphrase string,
+	algo keyring.SignatureAlgo,
+) (*keyring.Record, error) {
+	info, _, err := b.clientCtx.Keyring.NewMnemonic(uid, keyring.English, hdPath, bip39Passphrase, algo)
 	if err != nil {
 		return nil, err
 	}

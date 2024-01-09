@@ -12,7 +12,7 @@ require (
 	github.com/cosmos/cosmos-sdk v0.46.0
 	github.com/cosmos/go-bip39 v1.0.0
 	github.com/cosmos/gogoproto v1.4.11
-	github.com/cosmos/ibc-go/v3 v3.2.0
+	github.com/cosmos/ibc-go/v3 v3.3.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/ethereum/go-ethereum v1.10.19
 	github.com/gogo/protobuf v1.3.3

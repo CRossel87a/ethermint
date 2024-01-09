@@ -123,7 +123,7 @@ func SimulateEthCreateContract(ak types.AccountKeeper, k *keeper.Keeper) simtype
 		from := common.BytesToAddress(simAccount.Address)
 		nonce := k.GetNonce(ctx, from)
 
-		ctorArgs, err := types.ERC20Contract.ABI.Pack("", from, sdk.NewIntWithDecimal(1000, 18).BigInt())
+		ctorArgs, err := types.ERC20Contract.ABI.Pack("", from, sdk.NewInt(1000).BigInt())
 		if err != nil {
 			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "can not pack owner and supply"), nil, err
 		}
@@ -192,7 +192,7 @@ func SimulateEthTx(
 		return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "can not sign ethereum tx"), nil, err
 	}
 
-	_, _, err = ctx.bapp.Deliver(txConfig.TxEncoder(), signedTx)
+	_, _, err = ctx.bapp.SimDeliver(txConfig.TxEncoder(), signedTx)
 	if err != nil {
 		return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgEthereumTx, "failed to deliver tx"), nil, err
 	}
@@ -224,7 +224,7 @@ func CreateRandomValidEthTx(ctx *simulateContext, from, to *common.Address, amou
 	}
 
 	ethTx = types.NewTx(ethChainID, nonce, to, amount, gasLimit, gasPrice, gasFeeCap, gasTipCap, *data, nil)
-	ethTx.From = from.String()
+	ethTx.From = from.Bytes()
 	return ethTx, nil
 }
 

@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/gorilla/mux"
@@ -193,152 +192,115 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 		}
 	}()
 
-	// Add a done channel to signal goroutine termination
-	done := make(chan struct{})
-	defer close(done)
-
-	// Use a separate goroutine for reading to prevent blocking
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				_, mb, err := wsConn.ReadMessage()
-				if err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-						s.logger.Error("read message error", "error", err.Error())
-					}
-					_ = wsConn.Close()
-					return
-				}
-
-				if err := s.handleMessage(wsConn, mb, subscriptions); err != nil {
-					s.logger.Error("handle message error", "error", err.Error())
-					continue
-				}
-			}
-		}
-	}()
-
-	// Keep the connection alive with ping/pong
-	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
-
 	for {
-		select {
-		case <-ticker.C:
-			if err := wsConn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
-				s.logger.Error("ping error", "error", err.Error())
-				return
-			}
-		case <-done:
+		_, mb, err := wsConn.ReadMessage()
+		if err != nil {
+			_ = wsConn.Close()
+			s.logger.Error("read message error, breaking read loop", "error", err.Error())
 			return
 		}
+
+		if isBatch(mb) {
+			if err := s.tcpGetAndSendResponse(wsConn, mb); err != nil {
+				s.sendErrResponse(wsConn, err.Error())
+			}
+			continue
+		}
+
+		var msg map[string]interface{}
+		if err = json.Unmarshal(mb, &msg); err != nil {
+			s.sendErrResponse(wsConn, err.Error())
+			continue
+		}
+
+		// check if method == eth_subscribe or eth_unsubscribe
+		method, ok := msg["method"].(string)
+		if !ok {
+			// otherwise, call the usual rpc server to respond
+			if err := s.tcpGetAndSendResponse(wsConn, mb); err != nil {
+				s.sendErrResponse(wsConn, err.Error())
+			}
+
+			continue
+		}
+
+		var connID float64
+		switch id := msg["id"].(type) {
+		case string:
+			connID, err = strconv.ParseFloat(id, 64)
+		case float64:
+			connID = id
+		default:
+			err = fmt.Errorf("unknown type")
+		}
+		if err != nil {
+			s.sendErrResponse(
+				wsConn,
+				fmt.Errorf("invalid type for connection ID: %T", msg["id"]).Error(),
+			)
+			continue
+		}
+
+		switch method {
+		case "eth_subscribe":
+			params, ok := s.getParamsAndCheckValid(msg, wsConn)
+			if !ok {
+				continue
+			}
+
+			subID := rpc.NewID()
+			unsubFn, err := s.api.subscribe(wsConn, subID, params)
+			if err != nil {
+				s.sendErrResponse(wsConn, err.Error())
+				continue
+			}
+			subscriptions[subID] = unsubFn
+
+			res := &SubscriptionResponseJSON{
+				Jsonrpc: "2.0",
+				ID:      connID,
+				Result:  subID,
+			}
+
+			if err := wsConn.WriteJSON(res); err != nil {
+				break
+			}
+		case "eth_unsubscribe":
+			params, ok := s.getParamsAndCheckValid(msg, wsConn)
+			if !ok {
+				continue
+			}
+
+			id, ok := params[0].(string)
+			if !ok {
+				s.sendErrResponse(wsConn, "invalid parameters")
+				continue
+			}
+
+			subID := rpc.ID(id)
+			unsubFn, ok := subscriptions[subID]
+			if ok {
+				delete(subscriptions, subID)
+				unsubFn()
+			}
+
+			res := &SubscriptionResponseJSON{
+				Jsonrpc: "2.0",
+				ID:      connID,
+				Result:  ok,
+			}
+
+			if err := wsConn.WriteJSON(res); err != nil {
+				break
+			}
+		default:
+			// otherwise, call the usual rpc server to respond
+			if err := s.tcpGetAndSendResponse(wsConn, mb); err != nil {
+				s.sendErrResponse(wsConn, err.Error())
+			}
+		}
 	}
 }
-
-func (s *websocketsServer) handleMessage(wsConn *wsConn, mb []byte, subscriptions map[rpc.ID]pubsub.UnsubscribeFunc) error {
-	if isBatch(mb) {
-		return s.tcpGetAndSendResponse(wsConn, mb)
-	}
-
-	var msg map[string]interface{}
-	if err := json.Unmarshal(mb, &msg); err != nil {
-		return err
-	}
-
-	method, ok := msg["method"].(string)
-	if !ok {
-		return s.tcpGetAndSendResponse(wsConn, mb)
-	}
-
-	switch method {
-	case "eth_subscribe":
-		return s.handleSubscribe(wsConn, msg, subscriptions)
-	case "eth_unsubscribe":
-		return s.handleUnsubscribe(wsConn, msg, subscriptions)
-	default:
-		return s.tcpGetAndSendResponse(wsConn, mb)
-	}
-}
-
-func (s *websocketsServer) handleSubscribe(wsConn *wsConn, msg map[string]interface{}, subscriptions map[rpc.ID]pubsub.UnsubscribeFunc) error {
-	params, ok := s.getParamsAndCheckValid(msg, wsConn)
-	if !ok {
-		return errors.New("invalid parameters")
-	}
-
-	subID := rpc.NewID()
-	connID, err := s.getConnectionID(msg)
-	if err != nil {
-		return err
-	}
-
-	unsubFn, err := s.api.subscribe(wsConn, subID, params)
-	if err != nil {
-		return err
-	}
-
-	subscriptions[subID] = unsubFn
-
-	res := &SubscriptionResponseJSON{
-		Jsonrpc: "2.0",
-		ID:      connID,
-		Result:  subID,
-	}
-
-	return wsConn.WriteJSON(res)
-}
-
-func (s *websocketsServer) handleUnsubscribe(wsConn *wsConn, msg map[string]interface{}, subscriptions map[rpc.ID]pubsub.UnsubscribeFunc) error {
-	params, ok := s.getParamsAndCheckValid(msg, wsConn)
-	if !ok {
-		return errors.New("invalid parameters")
-	}
-
-	id, ok := params[0].(string)
-	if !ok {
-		return errors.New("invalid parameters")
-	}
-
-	subID := rpc.ID(id)
-	connID, err := s.getConnectionID(msg)
-	if err != nil {
-		return err
-	}
-
-	unsubFn, ok := subscriptions[subID]
-	if ok {
-		delete(subscriptions, subID)
-		unsubFn()
-	}
-
-	res := &SubscriptionResponseJSON{
-		Jsonrpc: "2.0",
-		ID:      connID,
-		Result:  ok,
-	}
-
-	return wsConn.WriteJSON(res)
-}
-
-func (s *websocketsServer) getConnectionID(msg map[string]interface{}) (float64, error) {
-	switch id := msg["id"].(type) {
-	case string:
-		return strconv.ParseFloat(id, 64)
-	case float64:
-		return id, nil
-	default:
-		return 0, errors.New("invalid connection ID type")
-	}
-}
-
-const (
-	writeWait  = 10 * time.Second
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
-)
 
 // tcpGetAndSendResponse sends error response to client if params is invalid
 func (s *websocketsServer) getParamsAndCheckValid(msg map[string]interface{}, wsConn *wsConn) ([]interface{}, bool) {

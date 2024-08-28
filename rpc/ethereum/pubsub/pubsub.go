@@ -146,10 +146,10 @@ func (m *memEventBus) closeAllSubscribers(name string) {
 
 func (m *memEventBus) publishAllSubscribers(name string, msg coretypes.ResultEvent) {
 	m.subscribersMux.RLock()
-	subsribers := m.subscribers[name]
-	m.subscribersMux.RUnlock()
+	defer m.subscribersMux.RUnlock()
+	subscribers := m.subscribers[name]
 
-	for _, sub := range subsribers {
+	for _, sub := range subscribers {
 		select {
 		case sub <- msg:
 		default:

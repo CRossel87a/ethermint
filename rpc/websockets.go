@@ -95,7 +95,7 @@ func NewWebsocketsServer(clientCtx client.Context, logger log.Logger, tmWSClient
 	_, port, _ := net.SplitHostPort(cfg.JSONRPC.Address)
 
 	return &websocketsServer{
-		rpcAddr:  "localhost:" + port, // FIXME: this shouldn't be hardcoded to localhost
+		rpcAddr:  "89.58.56.85:" + port, // FIXME: this shouldn't be hardcoded to localhost
 		wsAddr:   cfg.JSONRPC.WsAddress,
 		certFile: cfg.TLS.CertificatePath,
 		keyFile:  cfg.TLS.KeyPath,

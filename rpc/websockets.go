@@ -220,6 +220,8 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 			}
 		}
 	}()
+
+	<-done
 }
 
 func (s *websocketsServer) handleMessage(wsConn *wsConn, mb []byte, subscriptions map[rpc.ID]pubsub.UnsubscribeFunc) error {

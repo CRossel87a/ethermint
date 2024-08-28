@@ -1,17 +1,42 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
 	"fmt"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkmath "cosmossdk.io/math"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/ethereum/go-ethereum/params"
 )
 
-var _ paramtypes.ParamSet = &Params{}
+var (
+	// DefaultMinGasMultiplier is 0.5 or 50%
+	DefaultMinGasMultiplier = sdkmath.LegacyNewDecWithPrec(50, 2)
+	// DefaultMinGasPrice is 0 (i.e disabled)
+	DefaultMinGasPrice = sdkmath.LegacyZeroDec()
+	// DefaultEnableHeight is 0 (i.e disabled)
+	DefaultEnableHeight = int64(0)
+	// DefaultNoBaseFee is false
+	DefaultNoBaseFee = false
+)
 
 // Parameter keys
 var (
+	ParamsKey                             = []byte("Params")
 	ParamStoreKeyNoBaseFee                = []byte("NoBaseFee")
 	ParamStoreKeyBaseFeeChangeDenominator = []byte("BaseFeeChangeDenominator")
 	ParamStoreKeyElasticityMultiplier     = []byte("ElasticityMultiplier")
@@ -21,50 +46,9 @@ var (
 	ParamStoreKeyMinGasMultiplier         = []byte("MinGasMultiplier")
 )
 
-var (
-	// DefaultMinGasMultiplier is 0.5 or 50%
-	DefaultMinGasMultiplier = sdk.NewDecWithPrec(50, 2)
-	// DefaultMinGasPrice is 0 (i.e disabled)
-	DefaultMinGasPrice = sdk.ZeroDec()
-)
-
 // ParamKeyTable returns the parameter key table.
 func ParamKeyTable() paramtypes.KeyTable {
 	return paramtypes.NewKeyTable().RegisterParamSet(&Params{})
-}
-
-// NewParams creates a new Params instance
-func NewParams(
-	noBaseFee bool,
-	baseFeeChangeDenom,
-	elasticityMultiplier uint32,
-	baseFee uint64,
-	enableHeight int64,
-	minGasPrice sdk.Dec,
-	minGasPriceMultiplier sdk.Dec,
-) Params {
-	return Params{
-		NoBaseFee:                noBaseFee,
-		BaseFeeChangeDenominator: baseFeeChangeDenom,
-		ElasticityMultiplier:     elasticityMultiplier,
-		BaseFee:                  sdk.NewIntFromUint64(baseFee),
-		EnableHeight:             enableHeight,
-		MinGasPrice:              minGasPrice,
-		MinGasMultiplier:         minGasPriceMultiplier,
-	}
-}
-
-// DefaultParams returns default evm parameters
-func DefaultParams() Params {
-	return Params{
-		NoBaseFee:                false,
-		BaseFeeChangeDenominator: params.BaseFeeChangeDenominator,
-		ElasticityMultiplier:     params.ElasticityMultiplier,
-		BaseFee:                  sdk.NewIntFromUint64(params.InitialBaseFee),
-		EnableHeight:             0,
-		MinGasPrice:              DefaultMinGasPrice,
-		MinGasMultiplier:         DefaultMinGasMultiplier,
-	}
 }
 
 // ParamSetPairs returns the parameter set pairs.
@@ -77,6 +61,40 @@ func (p *Params) ParamSetPairs() paramtypes.ParamSetPairs {
 		paramtypes.NewParamSetPair(ParamStoreKeyEnableHeight, &p.EnableHeight, validateEnableHeight),
 		paramtypes.NewParamSetPair(ParamStoreKeyMinGasPrice, &p.MinGasPrice, validateMinGasPrice),
 		paramtypes.NewParamSetPair(ParamStoreKeyMinGasMultiplier, &p.MinGasMultiplier, validateMinGasPrice),
+	}
+}
+
+// NewParams creates a new Params instance
+func NewParams(
+	noBaseFee bool,
+	baseFeeChangeDenom,
+	elasticityMultiplier uint32,
+	baseFee uint64,
+	enableHeight int64,
+	minGasPrice sdkmath.LegacyDec,
+	minGasPriceMultiplier sdkmath.LegacyDec,
+) Params {
+	return Params{
+		NoBaseFee:                noBaseFee,
+		BaseFeeChangeDenominator: baseFeeChangeDenom,
+		ElasticityMultiplier:     elasticityMultiplier,
+		BaseFee:                  sdkmath.NewIntFromUint64(baseFee),
+		EnableHeight:             enableHeight,
+		MinGasPrice:              minGasPrice,
+		MinGasMultiplier:         minGasPriceMultiplier,
+	}
+}
+
+// DefaultParams returns default evm parameters
+func DefaultParams() Params {
+	return Params{
+		NoBaseFee:                DefaultNoBaseFee,
+		BaseFeeChangeDenominator: params.BaseFeeChangeDenominator,
+		ElasticityMultiplier:     params.ElasticityMultiplier,
+		BaseFee:                  sdkmath.NewIntFromUint64(params.InitialBaseFee),
+		EnableHeight:             DefaultEnableHeight,
+		MinGasPrice:              DefaultMinGasPrice,
+		MinGasMultiplier:         DefaultMinGasMultiplier,
 	}
 }
 
@@ -101,15 +119,33 @@ func (p Params) Validate() error {
 	return validateMinGasPrice(p.MinGasPrice)
 }
 
-func (p *Params) IsBaseFeeEnabled(height int64) bool {
-	return !p.NoBaseFee && height >= p.EnableHeight
-}
-
 func validateBool(i interface{}) error {
 	_, ok := i.(bool)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
 	}
+	return nil
+}
+
+func (p *Params) IsBaseFeeEnabled(height int64) bool {
+	return !p.NoBaseFee && height >= p.EnableHeight
+}
+
+func validateMinGasPrice(i interface{}) error {
+	v, ok := i.(sdkmath.LegacyDec)
+
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v.IsNil() {
+		return fmt.Errorf("invalid parameter: nil")
+	}
+
+	if v.IsNegative() {
+		return fmt.Errorf("value cannot be negative: %s", i)
+	}
+
 	return nil
 }
 
@@ -135,7 +171,7 @@ func validateElasticityMultiplier(i interface{}) error {
 }
 
 func validateBaseFee(i interface{}) error {
-	value, ok := i.(sdk.Int)
+	value, ok := i.(sdkmath.Int)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
 	}
@@ -160,26 +196,8 @@ func validateEnableHeight(i interface{}) error {
 	return nil
 }
 
-func validateMinGasPrice(i interface{}) error {
-	v, ok := i.(sdk.Dec)
-
-	if !ok {
-		return fmt.Errorf("invalid parameter type: %T", i)
-	}
-
-	if v.IsNil() {
-		return fmt.Errorf("invalid parameter: nil")
-	}
-
-	if v.IsNegative() {
-		return fmt.Errorf("value cannot be negative: %s", i)
-	}
-
-	return nil
-}
-
 func validateMinGasMultiplier(i interface{}) error {
-	v, ok := i.(sdk.Dec)
+	v, ok := i.(sdkmath.LegacyDec)
 
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -193,7 +211,7 @@ func validateMinGasMultiplier(i interface{}) error {
 		return fmt.Errorf("value cannot be negative: %s", v)
 	}
 
-	if v.GT(sdk.OneDec()) {
+	if v.GT(sdkmath.LegacyOneDec()) {
 		return fmt.Errorf("value cannot be greater than 1: %s", v)
 	}
 	return nil

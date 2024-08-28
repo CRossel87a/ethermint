@@ -3,9 +3,7 @@ package types
 import (
 	"testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-
-	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
+	sdkmath "cosmossdk.io/math"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -17,10 +15,6 @@ func TestParamsTestSuite(t *testing.T) {
 	suite.Run(t, new(ParamsTestSuite))
 }
 
-func (suite *ParamsTestSuite) TestParamKeyTable() {
-	suite.Require().IsType(paramtypes.KeyTable{}, ParamKeyTable())
-}
-
 func (suite *ParamsTestSuite) TestParamsValidate() {
 	testCases := []struct {
 		name     string
@@ -30,7 +24,7 @@ func (suite *ParamsTestSuite) TestParamsValidate() {
 		{"default", DefaultParams(), false},
 		{
 			"valid",
-			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdk.NewDecWithPrec(20, 4), DefaultMinGasMultiplier),
+			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdkmath.LegacyNewDecWithPrec(20, 4), DefaultMinGasMultiplier),
 			false,
 		},
 		{
@@ -40,27 +34,27 @@ func (suite *ParamsTestSuite) TestParamsValidate() {
 		},
 		{
 			"base fee change denominator is 0 ",
-			NewParams(true, 0, 3, 2000000000, int64(544435345345435345), sdk.NewDecWithPrec(20, 4), DefaultMinGasMultiplier),
+			NewParams(true, 0, 3, 2000000000, int64(544435345345435345), sdkmath.LegacyNewDecWithPrec(20, 4), DefaultMinGasMultiplier),
 			true,
 		},
 		{
 			"invalid: min gas price negative",
-			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdk.NewDecFromInt(sdk.NewInt(-1)), DefaultMinGasMultiplier),
+			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdkmath.LegacyNewDecFromInt(sdkmath.NewInt(-1)), DefaultMinGasMultiplier),
 			true,
 		},
 		{
 			"valid: min gas multiplier zero",
-			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), DefaultMinGasPrice, sdk.ZeroDec()),
+			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), DefaultMinGasPrice, sdkmath.LegacyZeroDec()),
 			false,
 		},
 		{
 			"invalid: min gas multiplier is negative",
-			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), DefaultMinGasPrice, sdk.NewDecWithPrec(-5, 1)),
+			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), DefaultMinGasPrice, sdkmath.LegacyNewDecWithPrec(-5, 1)),
 			true,
 		},
 		{
 			"invalid: min gas multiplier bigger than 1",
-			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdk.NewDecWithPrec(20, 4), sdk.NewDec(2)),
+			NewParams(true, 7, 3, 2000000000, int64(544435345345435345), sdkmath.LegacyNewDecWithPrec(20, 4), sdkmath.LegacyNewDec(2)),
 			true,
 		},
 	}
@@ -86,14 +80,14 @@ func (suite *ParamsTestSuite) TestParamsValidatePriv() {
 	suite.Require().NoError(validateElasticityMultiplier(uint32(2)))
 	suite.Require().Error(validateBaseFee(""))
 	suite.Require().Error(validateBaseFee(int64(2000000000)))
-	suite.Require().Error(validateBaseFee(sdk.NewInt(-2000000000)))
-	suite.Require().NoError(validateBaseFee(sdk.NewInt(2000000000)))
+	suite.Require().Error(validateBaseFee(sdkmath.NewInt(-2000000000)))
+	suite.Require().NoError(validateBaseFee(sdkmath.NewInt(2000000000)))
 	suite.Require().Error(validateEnableHeight(""))
 	suite.Require().Error(validateEnableHeight(int64(-544435345345435345)))
 	suite.Require().NoError(validateEnableHeight(int64(544435345345435345)))
-	suite.Require().Error(validateMinGasPrice(sdk.Dec{}))
-	suite.Require().Error(validateMinGasMultiplier(sdk.NewDec(-5)))
-	suite.Require().Error(validateMinGasMultiplier(sdk.Dec{}))
+	suite.Require().Error(validateMinGasPrice(sdkmath.LegacyDec{}))
+	suite.Require().Error(validateMinGasMultiplier(sdkmath.LegacyNewDec(-5)))
+	suite.Require().Error(validateMinGasMultiplier(sdkmath.LegacyDec{}))
 	suite.Require().Error(validateMinGasMultiplier(""))
 }
 
@@ -104,13 +98,13 @@ func (suite *ParamsTestSuite) TestParamsValidateMinGasPrice() {
 		expError bool
 	}{
 		{"default", DefaultParams().MinGasPrice, false},
-		{"valid", sdk.NewDecFromInt(sdk.NewInt(1)), false},
+		{"valid", sdkmath.LegacyNewDecFromInt(sdkmath.NewInt(1)), false},
 		{"invalid - wrong type - bool", false, true},
 		{"invalid - wrong type - string", "", true},
 		{"invalid - wrong type - int64", int64(123), true},
-		{"invalid - wrong type - sdk.Int", sdk.NewInt(1), true},
+		{"invalid - wrong type - sdkmath.Int", sdkmath.NewInt(1), true},
 		{"invalid - is nil", nil, true},
-		{"invalid - is negative", sdk.NewDecFromInt(sdk.NewInt(-1)), true},
+		{"invalid - is negative", sdkmath.LegacyNewDecFromInt(sdkmath.NewInt(-1)), true},
 	}
 
 	for _, tc := range testCases {

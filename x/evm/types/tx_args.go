@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
@@ -5,7 +20,8 @@ import (
 	"fmt"
 	"math/big"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkmath "cosmossdk.io/math"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -55,14 +71,14 @@ func (args *TransactionArgs) String() string {
 // This assumes that setTxDefaults has been called.
 func (args *TransactionArgs) ToTransaction() *MsgEthereumTx {
 	var (
-		chainID, value, gasPrice, maxFeePerGas, maxPriorityFeePerGas sdk.Int
+		chainID, value, gasPrice, maxFeePerGas, maxPriorityFeePerGas sdkmath.Int
 		gas, nonce                                                   uint64
 		from, to                                                     string
 	)
 
 	// Set sender address or use zero address if none specified.
 	if args.ChainID != nil {
-		chainID = sdk.NewIntFromBigInt(args.ChainID.ToInt())
+		chainID = sdkmath.NewIntFromBigInt(args.ChainID.ToInt())
 	}
 
 	if args.Nonce != nil {
@@ -74,19 +90,19 @@ func (args *TransactionArgs) ToTransaction() *MsgEthereumTx {
 	}
 
 	if args.GasPrice != nil {
-		gasPrice = sdk.NewIntFromBigInt(args.GasPrice.ToInt())
+		gasPrice = sdkmath.NewIntFromBigInt(args.GasPrice.ToInt())
 	}
 
 	if args.MaxFeePerGas != nil {
-		maxFeePerGas = sdk.NewIntFromBigInt(args.MaxFeePerGas.ToInt())
+		maxFeePerGas = sdkmath.NewIntFromBigInt(args.MaxFeePerGas.ToInt())
 	}
 
 	if args.MaxPriorityFeePerGas != nil {
-		maxPriorityFeePerGas = sdk.NewIntFromBigInt(args.MaxPriorityFeePerGas.ToInt())
+		maxPriorityFeePerGas = sdkmath.NewIntFromBigInt(args.MaxPriorityFeePerGas.ToInt())
 	}
 
 	if args.Value != nil {
-		value = sdk.NewIntFromBigInt(args.Value.ToInt())
+		value = sdkmath.NewIntFromBigInt(args.Value.ToInt())
 	}
 
 	if args.To != nil {
@@ -134,7 +150,7 @@ func (args *TransactionArgs) ToTransaction() *MsgEthereumTx {
 		}
 	}
 
-	any, err := PackTxData(data)
+	anyData, err := PackTxData(data)
 	if err != nil {
 		return nil
 	}
@@ -144,7 +160,7 @@ func (args *TransactionArgs) ToTransaction() *MsgEthereumTx {
 	}
 
 	msg := MsgEthereumTx{
-		Data: any,
+		Data: anyData,
 		From: from,
 	}
 	msg.Hash = msg.AsTransaction().Hash().Hex()

@@ -1,12 +1,28 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package server
 
 import (
 	"context"
 	"time"
 
-	"github.com/tendermint/tendermint/libs/service"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	"github.com/tendermint/tendermint/types"
+	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/libs/service"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
+	"github.com/cometbft/cometbft/types"
 
 	ethermint "github.com/evmos/ethermint/types"
 )
@@ -100,7 +116,7 @@ func (eis *EVMIndexerService) OnStart() error {
 				eis.Logger.Error("failed to fetch block result", "height", i, "err", err)
 				break
 			}
-			if err := eis.txIdxr.IndexBlock(block.Block, blockResult.TxsResults); err != nil {
+			if err := eis.txIdxr.IndexBlock(block.Block, &abci.ResponseFinalizeBlock{TxResults: blockResult.TxsResults}); err != nil {
 				eis.Logger.Error("failed to index block", "height", i, "err", err)
 			}
 			lastBlock = blockResult.Height

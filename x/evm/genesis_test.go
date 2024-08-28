@@ -7,6 +7,7 @@ import (
 
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/evmos/ethermint/crypto/ethsecp256k1"
+	etherminttypes "github.com/evmos/ethermint/types"
 	"github.com/evmos/ethermint/x/evm"
 	"github.com/evmos/ethermint/x/evm/statedb"
 	"github.com/evmos/ethermint/x/evm/types"
@@ -67,6 +68,8 @@ func (suite *EvmTestSuite) TestInitGenesis() {
 			"invalid account type",
 			func() {
 				acc := authtypes.NewBaseAccountWithAddress(address.Bytes())
+				accNum := suite.app.AccountKeeper.NextAccountNumber(suite.ctx)
+				acc.SetAccountNumber(accNum)
 				suite.app.AccountKeeper.SetAccount(suite.ctx, acc)
 			},
 			&types.GenesisState{
@@ -95,6 +98,46 @@ func (suite *EvmTestSuite) TestInitGenesis() {
 				},
 			},
 			true,
+		},
+		{
+			"ignore empty account code checking",
+			func() {
+				acc := suite.app.AccountKeeper.NewAccountWithAddress(suite.ctx, address.Bytes())
+
+				suite.app.AccountKeeper.SetAccount(suite.ctx, acc)
+			},
+			&types.GenesisState{
+				Params: types.DefaultParams(),
+				Accounts: []types.GenesisAccount{
+					{
+						Address: address.String(),
+						Code:    "",
+					},
+				},
+			},
+			false,
+		},
+		{
+			"ignore empty account code checking with non-empty codehash",
+			func() {
+				accNum := suite.app.AccountKeeper.NextAccountNumber(suite.ctx)
+				ethAcc := &etherminttypes.EthAccount{
+					BaseAccount: authtypes.NewBaseAccount(address.Bytes(), nil, accNum, 0),
+					CodeHash:    common.BytesToHash([]byte{1, 2, 3}).Hex(),
+				}
+
+				suite.app.AccountKeeper.SetAccount(suite.ctx, ethAcc)
+			},
+			&types.GenesisState{
+				Params: types.DefaultParams(),
+				Accounts: []types.GenesisAccount{
+					{
+						Address: address.String(),
+						Code:    "",
+					},
+				},
+			},
+			false,
 		},
 	}
 

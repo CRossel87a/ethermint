@@ -1,11 +1,26 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package keys
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
 
-	yaml "gopkg.in/yaml.v2"
+	"sigs.k8s.io/yaml"
 
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	cryptokeyring "github.com/cosmos/cosmos-sdk/crypto/keyring"
@@ -15,58 +30,45 @@ import (
 const (
 	OutputFormatText = "text"
 	OutputFormatJSON = "json"
-
-	// defaultKeyDBName is the client's subdirectory where keys are stored.
-	defaultKeyDBName = "keys"
 )
 
-type bechKeyOutFn func(keyInfo cryptokeyring.Info) (cryptokeyring.KeyOutput, error)
+type bechKeyOutFn func(k *cryptokeyring.Record) (keys.KeyOutput, error)
 
-// NewLegacyKeyBaseFromDir initializes a legacy keybase at the rootDir directory. Keybase
-// options can be applied when generating this new Keybase.
-func NewLegacyKeyBaseFromDir(rootDir string, opts ...cryptokeyring.KeybaseOption) (cryptokeyring.LegacyKeybase, error) {
-	return getLegacyKeyBaseFromDir(rootDir, opts...)
-}
-
-func getLegacyKeyBaseFromDir(rootDir string, opts ...cryptokeyring.KeybaseOption) (cryptokeyring.LegacyKeybase, error) {
-	return cryptokeyring.NewLegacy(defaultKeyDBName, filepath.Join(rootDir, "keys"), opts...)
-}
-
-func printKeyInfo(w io.Writer, keyInfo cryptokeyring.Info, bechKeyOut bechKeyOutFn, output string) {
-	ko, err := bechKeyOut(keyInfo)
+func printKeyringRecord(w io.Writer, k *cryptokeyring.Record, bechKeyOut bechKeyOutFn, output string) error {
+	ko, err := bechKeyOut(k)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	switch output {
 	case OutputFormatText:
-		printTextInfos(w, []cryptokeyring.KeyOutput{ko})
-
-	case OutputFormatJSON:
-		out, err := keys.KeysCdc.MarshalJSON(ko)
-		if err != nil {
-			panic(err)
+		if err := printTextRecords(w, []keys.KeyOutput{ko}); err != nil {
+			return err
 		}
 
-		fmt.Fprintln(w, string(out))
+	case OutputFormatJSON:
+		out, err := json.Marshal(ko)
+		if err != nil {
+			return err
+		}
+
+		if _, err := fmt.Fprintln(w, string(out)); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func printTextInfos(w io.Writer, kos []cryptokeyring.KeyOutput) {
+func printTextRecords(w io.Writer, kos []keys.KeyOutput) error {
 	out, err := yaml.Marshal(&kos)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	fmt.Fprintln(w, string(out))
-}
 
-func validateMultisigThreshold(k, nKeys int) error {
-	if k <= 0 {
-		return fmt.Errorf("threshold must be a positive integer")
+	if _, err := fmt.Fprintln(w, string(out)); err != nil {
+		return err
 	}
-	if nKeys < k {
-		return fmt.Errorf(
-			"threshold k of n multisignature: %d < %d", nKeys, k)
-	}
+
 	return nil
 }

@@ -329,6 +329,24 @@ func waitForReceipt(t *testing.T, hash hexutil.Bytes) map[string]interface{} {
 	}
 }
 
+func TestEth_IncompleteSendTransaction(t *testing.T) {
+	// get gasprice
+	gasPrice := GetGasPrice(t)
+
+	// make tx params without from address
+	param := make([]map[string]string, 1)
+	param[0] = make(map[string]string)
+	param[0]["from"] = ""
+	param[0]["to"] = "0x1122334455667788990011223344556677889900"
+	param[0]["value"] = "0x1"
+	param[0]["gasPrice"] = gasPrice
+	_, err := callWithError("eth_sendTransaction", param)
+
+	// require well-formatted error (should not be "method handler crashed")
+	require.Error(t, err)
+	require.NotEqual(t, err.Error(), "method handler crashed", "no from field dealt with incorrectly")
+}
+
 func TestEth_GetFilterChanges_NoTopics(t *testing.T) {
 	rpcRes := call(t, "eth_blockNumber", []string{})
 
@@ -577,8 +595,8 @@ func TestEth_FeeHistory(t *testing.T) {
 	baseFeePerGas := info["baseFeePerGas"].([]interface{})
 	gasUsedRatio := info["gasUsedRatio"].([]interface{})
 
-	require.Equal(t, info["oldestBlock"].(string), "0x6")
+	require.Equal(t, info["oldestBlock"].(string), "0x7")
 	require.Equal(t, 4, len(gasUsedRatio))
-	require.Equal(t, 4, len(baseFeePerGas))
+	require.Equal(t, 5, len(baseFeePerGas))
 	require.Equal(t, 4, len(reward))
 }

@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
@@ -5,18 +20,26 @@ import (
 	"fmt"
 	"math/big"
 
+	protov2 "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
+
+	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/client"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	errortypes "github.com/cosmos/cosmos-sdk/types/errors"
+	signing "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	"github.com/cosmos/cosmos-sdk/x/auth/signing"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	evmapi "github.com/evmos/ethermint/api/ethermint/evm/v1"
 
 	"github.com/evmos/ethermint/types"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )
@@ -25,14 +48,9 @@ var (
 	_ sdk.Msg    = &MsgEthereumTx{}
 	_ sdk.Tx     = &MsgEthereumTx{}
 	_ ante.GasTx = &MsgEthereumTx{}
+	_ sdk.Msg    = &MsgUpdateParams{}
 
 	_ codectypes.UnpackInterfacesMessage = MsgEthereumTx{}
-)
-
-// message type and route constants
-const (
-	// TypeMsgEthereumTx defines the type string of an Ethereum transaction
-	TypeMsgEthereumTx = "ethereum_tx"
 )
 
 // NewTx returns a reference to a new Ethereum transaction message.
@@ -62,7 +80,7 @@ func newMsgEthereumTx(
 	gasLimit uint64, gasPrice, gasFeeCap, gasTipCap *big.Int, input []byte, accesses *ethtypes.AccessList,
 ) *MsgEthereumTx {
 	var (
-		cid, amt, gp *sdk.Int
+		cid, amt, gp *sdkmath.Int
 		toAddr       string
 		txData       TxData
 	)
@@ -72,17 +90,17 @@ func newMsgEthereumTx(
 	}
 
 	if amount != nil {
-		amountInt := sdk.NewIntFromBigInt(amount)
+		amountInt := sdkmath.NewIntFromBigInt(amount)
 		amt = &amountInt
 	}
 
 	if chainID != nil {
-		chainIDInt := sdk.NewIntFromBigInt(chainID)
+		chainIDInt := sdkmath.NewIntFromBigInt(chainID)
 		cid = &chainIDInt
 	}
 
 	if gasPrice != nil {
-		gasPriceInt := sdk.NewIntFromBigInt(gasPrice)
+		gasPriceInt := sdkmath.NewIntFromBigInt(gasPrice)
 		gp = &gasPriceInt
 	}
 
@@ -97,8 +115,8 @@ func newMsgEthereumTx(
 			Data:     input,
 		}
 	case accesses != nil && gasFeeCap != nil && gasTipCap != nil:
-		gtc := sdk.NewIntFromBigInt(gasTipCap)
-		gfc := sdk.NewIntFromBigInt(gasFeeCap)
+		gtc := sdkmath.NewIntFromBigInt(gasTipCap)
+		gfc := sdkmath.NewIntFromBigInt(gasFeeCap)
 
 		txData = &DynamicFeeTx{
 			ChainID:   cid,
@@ -152,34 +170,28 @@ func (msg *MsgEthereumTx) FromEthereumTx(tx *ethtypes.Transaction) error {
 	return nil
 }
 
-// Route returns the route value of an MsgEthereumTx.
-func (msg MsgEthereumTx) Route() string { return RouterKey }
-
-// Type returns the type value of an MsgEthereumTx.
-func (msg MsgEthereumTx) Type() string { return TypeMsgEthereumTx }
-
 // ValidateBasic implements the sdk.Msg interface. It performs basic validation
 // checks of a Transaction. If returns an error if validation fails.
 func (msg MsgEthereumTx) ValidateBasic() error {
 	if msg.From != "" {
 		if err := types.ValidateAddress(msg.From); err != nil {
-			return sdkerrors.Wrap(err, "invalid from address")
+			return errorsmod.Wrap(err, "invalid from address")
 		}
 	}
 
 	// Validate Size_ field, should be kept empty
 	if msg.Size_ != 0 {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "tx size is deprecated")
+		return errorsmod.Wrapf(errortypes.ErrInvalidRequest, "tx size is deprecated")
 	}
 
 	txData, err := UnpackTxData(msg.Data)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to unpack tx data")
+		return errorsmod.Wrap(err, "failed to unpack tx data")
 	}
 
 	// prevent txs with 0 gas to fill up the mempool
 	if txData.GetGas() == 0 {
-		return sdkerrors.Wrap(ErrInvalidGasLimit, "gas limit must not be zero")
+		return errorsmod.Wrap(ErrInvalidGasLimit, "gas limit must not be zero")
 	}
 
 	if err := txData.Validate(); err != nil {
@@ -189,7 +201,7 @@ func (msg MsgEthereumTx) ValidateBasic() error {
 	// Validate Hash field after validated txData to avoid panic
 	txHash := msg.AsTransaction().Hash().Hex()
 	if msg.Hash != txHash {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "invalid tx hash %s, expected: %s", msg.Hash, txHash)
+		return errorsmod.Wrapf(errortypes.ErrInvalidRequest, "invalid tx hash %s, expected: %s", msg.Hash, txHash)
 	}
 
 	return nil
@@ -200,11 +212,28 @@ func (msg *MsgEthereumTx) GetMsgs() []sdk.Msg {
 	return []sdk.Msg{msg}
 }
 
+func (msg *MsgEthereumTx) GetMsgsV2() ([]protov2.Message, error) {
+	m := evmapi.MsgEthereumTx{
+		Data: &anypb.Any{
+			TypeUrl: msg.Data.TypeUrl,
+			Value:   msg.Data.Value,
+		},
+		Size: msg.Size_,
+		Hash: msg.Hash,
+		From: msg.From,
+	}
+	return []protov2.Message{&m}, nil
+}
+
 // GetSigners returns the expected signers for an Ethereum transaction message.
 // For such a message, there should exist only a single 'signer'.
 //
 // NOTE: This method panics if 'Sign' hasn't been called first.
 func (msg *MsgEthereumTx) GetSigners() []sdk.AccAddress {
+	if len(msg.From) > 0 {
+		return []sdk.AccAddress{common.HexToAddress(msg.From).Bytes()}
+	}
+
 	data, err := UnpackTxData(msg.Data)
 	if err != nil {
 		panic(err)
@@ -244,7 +273,7 @@ func (msg *MsgEthereumTx) Sign(ethSigner ethtypes.Signer, keyringSigner keyring.
 	tx := msg.AsTransaction()
 	txHash := ethSigner.Hash(tx)
 
-	sig, _, err := keyringSigner.SignByAddress(from, txHash.Bytes())
+	sig, _, err := keyringSigner.SignByAddress(from, txHash.Bytes(), signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON)
 	if err != nil {
 		return err
 	}
@@ -306,7 +335,42 @@ func (msg MsgEthereumTx) AsTransaction() *ethtypes.Transaction {
 
 // AsMessage creates an Ethereum core.Message from the msg fields
 func (msg MsgEthereumTx) AsMessage(signer ethtypes.Signer, baseFee *big.Int) (core.Message, error) {
-	return msg.AsTransaction().AsMessage(signer, baseFee)
+	txData, err := UnpackTxData(msg.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	gasPrice, gasFeeCap, gasTipCap := txData.GetGasPrice(), txData.GetGasFeeCap(), txData.GetGasTipCap()
+	if baseFee != nil {
+		gasPrice = math.BigMin(gasPrice.Add(gasTipCap, baseFee), gasFeeCap)
+	}
+	var from common.Address
+	if len(msg.From) > 0 {
+		// user can't set arbitrary value in `From` field in transaction,
+		// the SigVerify ante handler will verify the signature and recover
+		// the sender address and populate the `From` field, so the other code can
+		// use it directly when available.
+		from = common.HexToAddress(msg.From)
+	} else {
+		// heavy path
+		from, err = signer.Sender(msg.AsTransaction())
+		if err != nil {
+			return nil, err
+		}
+	}
+	ethMsg := ethtypes.NewMessage(
+		from,
+		txData.GetTo(),
+		txData.GetNonce(),
+		txData.GetValue(),
+		txData.GetGas(),
+		gasPrice, gasFeeCap, gasTipCap,
+		txData.GetData(),
+		txData.GetAccessList(),
+		false,
+	)
+
+	return ethMsg, nil
 }
 
 // GetSender extracts the sender address from the signature values using the latest signer for the given chainID.
@@ -336,7 +400,7 @@ func (msg *MsgEthereumTx) UnmarshalBinary(b []byte) error {
 }
 
 // BuildTx builds the canonical cosmos tx from ethereum msg
-func (msg *MsgEthereumTx) BuildTx(b client.TxBuilder, evmDenom string) (signing.Tx, error) {
+func (msg *MsgEthereumTx) BuildTx(b client.TxBuilder, evmDenom string) (authsigning.Tx, error) {
 	builder, ok := b.(authtx.ExtensionOptionsTxBuilder)
 	if !ok {
 		return nil, errors.New("unsupported builder")
@@ -352,7 +416,7 @@ func (msg *MsgEthereumTx) BuildTx(b client.TxBuilder, evmDenom string) (signing.
 		return nil, err
 	}
 	fees := make(sdk.Coins, 0)
-	feeAmt := sdk.NewIntFromBigInt(txData.Fee())
+	feeAmt := sdkmath.NewIntFromBigInt(txData.Fee())
 	if feeAmt.Sign() > 0 {
 		fees = append(fees, sdk.NewCoin(evmDenom, feeAmt))
 	}
@@ -370,4 +434,54 @@ func (msg *MsgEthereumTx) BuildTx(b client.TxBuilder, evmDenom string) (signing.
 	builder.SetGasLimit(msg.GetGas())
 	tx := builder.GetTx()
 	return tx, nil
+}
+
+func GetSignersFromMsgEthereumTxV2(msg protov2.Message) ([][]byte, error) {
+	msgv1, err := GetMsgEthereumTxFromMsgV2(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	signers := [][]byte{}
+	for _, signer := range msgv1.GetSigners() {
+		signers = append(signers, signer.Bytes())
+	}
+
+	return signers, nil
+}
+
+func GetMsgEthereumTxFromMsgV2(msg protov2.Message) (MsgEthereumTx, error) {
+	msgv2, ok := msg.(*evmapi.MsgEthereumTx)
+	if !ok {
+		return MsgEthereumTx{}, fmt.Errorf("invalid x/evm/MsgEthereumTx msg v2: %v", msg)
+	}
+
+	var dataAny *codectypes.Any
+	var err error
+	switch msgv2.Data.TypeUrl {
+	case "/ethermint.evm.v1.LegacyTx":
+		legacyTx := LegacyTx{}
+		ModuleCdc.MustUnmarshal(msgv2.Data.Value, &legacyTx)
+		dataAny, err = PackTxData(&legacyTx)
+		if err != nil {
+			return MsgEthereumTx{}, err
+		}
+	case "/ethermint.evm.v1.DynamicFeeTx":
+		dynamicFeeTx := DynamicFeeTx{}
+		ModuleCdc.MustUnmarshal(msgv2.Data.Value, &dynamicFeeTx)
+		dataAny, err = PackTxData(&dynamicFeeTx)
+		if err != nil {
+			return MsgEthereumTx{}, err
+		}
+	case "/ethermint.evm.v1.AccessListTx":
+		accessListTx := AccessListTx{}
+		ModuleCdc.MustUnmarshal(msgv2.Data.Value, &accessListTx)
+		dataAny, err = PackTxData(&accessListTx)
+		if err != nil {
+			return MsgEthereumTx{}, err
+		}
+	}
+	msgv1 := MsgEthereumTx{Data: dataAny}
+	msgv1.Hash = msgv1.AsTransaction().Hash().Hex()
+	return msgv1, nil
 }

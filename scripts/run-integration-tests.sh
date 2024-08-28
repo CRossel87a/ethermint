@@ -6,8 +6,17 @@ cd "$(dirname "$0")"
 export TMPDIR=/tmp
 
 echo "build test contracts"
-cd ../tests/integration_tests/contracts
+cd ../tests/integration_tests/hardhat
 HUSKY_SKIP_INSTALL=1 npm install
 npm run typechain
 cd ..
-pytest -vv -s
+
+TESTS_TO_RUN="${TESTS_TO_RUN:-all}"
+
+if [[ "$TESTS_TO_RUN" == "all" ]]; then
+  echo "run all tests"
+  pytest -vv -s
+else
+  echo "run tests matching $TESTS_TO_RUN"
+  pytest -vv -s -m "$TESTS_TO_RUN"
+fi

@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package statedb
 
 import (
@@ -5,8 +20,8 @@ import (
 	"math/big"
 	"sort"
 
+	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -197,7 +212,7 @@ func (s *StateDB) HasSuicided(addr common.Address) bool {
 // AddPreimage performs a no-op since the EnablePreimageRecording flag is disabled
 // on the vm.Config during state transitions. No store trie preimages are written
 // to the database.
-func (s *StateDB) AddPreimage(hash common.Hash, preimage []byte) {}
+func (s *StateDB) AddPreimage(_ common.Hash, _ []byte) {}
 
 // getStateObject retrieves a state object given by the address, returning nil if
 // the object is not found.
@@ -429,7 +444,7 @@ func (s *StateDB) RevertToSnapshot(revid int) {
 	snapshot := s.validRevisions[idx].journalIndex
 
 	// Replay the journal to undo changes and remove invalidated snapshots
-	s.journal.revert(s, snapshot)
+	s.journal.Revert(s, snapshot)
 	s.validRevisions = s.validRevisions[:idx]
 }
 
@@ -440,14 +455,14 @@ func (s *StateDB) Commit() error {
 		obj := s.stateObjects[addr]
 		if obj.suicided {
 			if err := s.keeper.DeleteAccount(s.ctx, obj.Address()); err != nil {
-				return sdkerrors.Wrap(err, "failed to delete account")
+				return errorsmod.Wrap(err, "failed to delete account")
 			}
 		} else {
 			if obj.code != nil && obj.dirtyCode {
 				s.keeper.SetCode(s.ctx, obj.CodeHash(), obj.code)
 			}
 			if err := s.keeper.SetAccount(s.ctx, obj.Address(), obj.account); err != nil {
-				return sdkerrors.Wrap(err, "failed to set account")
+				return errorsmod.Wrap(err, "failed to set account")
 			}
 			for _, key := range obj.dirtyStorage.SortedKeys() {
 				value := obj.dirtyStorage[key]

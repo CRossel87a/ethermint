@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package backend
 
 import (
@@ -7,9 +22,9 @@ import (
 	"fmt"
 	"math/big"
 
+	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -151,7 +166,7 @@ func (b *Backend) SendRawTransaction(data hexutil.Bytes) (common.Hash, error) {
 	syncCtx := b.clientCtx.WithBroadcastMode(flags.BroadcastSync)
 	rsp, err := syncCtx.BroadcastTx(txBytes)
 	if rsp != nil && rsp.Code != 0 {
-		err = sdkerrors.ABCIError(rsp.Codespace, rsp.Code, rsp.RawLog)
+		err = errorsmod.ABCIError(rsp.Codespace, rsp.Code, rsp.RawLog)
 	}
 	if err != nil {
 		b.logger.Error("failed to broadcast tx", "error", err.Error())
@@ -269,6 +284,8 @@ func (b *Backend) SetTxDefaults(args evmtypes.TransactionArgs) (evmtypes.Transac
 			Value:                args.Value,
 			Data:                 input,
 			AccessList:           args.AccessList,
+			ChainID:              args.ChainID,
+			Nonce:                args.Nonce,
 		}
 
 		blockNr := rpctypes.NewBlockNumber(big.NewInt(0))
@@ -299,7 +316,7 @@ func (b *Backend) EstimateGas(args evmtypes.TransactionArgs, blockNrOptional *rp
 		return 0, err
 	}
 
-	header, err := b.GetTendermintBlockByNumber(blockNr)
+	header, err := b.TendermintBlockByNumber(blockNr)
 	if err != nil {
 		// the error message imitates geth behavior
 		return 0, errors.New("header not found")
@@ -309,6 +326,7 @@ func (b *Backend) EstimateGas(args evmtypes.TransactionArgs, blockNrOptional *rp
 		Args:            bz,
 		GasCap:          b.RPCGasCap(),
 		ProposerAddress: sdk.ConsAddress(header.Block.ProposerAddress),
+		ChainId:         b.chainID.Int64(),
 	}
 
 	// From ContextWithHeight: if the provided height is 0,
@@ -330,15 +348,17 @@ func (b *Backend) DoCall(
 	if err != nil {
 		return nil, err
 	}
-	header, err := b.GetTendermintBlockByNumber(blockNr)
+	header, err := b.TendermintBlockByNumber(blockNr)
 	if err != nil {
 		// the error message imitates geth behavior
 		return nil, errors.New("header not found")
 	}
+
 	req := evmtypes.EthCallRequest{
 		Args:            bz,
 		GasCap:          b.RPCGasCap(),
 		ProposerAddress: sdk.ConsAddress(header.Block.ProposerAddress),
+		ChainId:         b.chainID.Int64(),
 	}
 
 	// From ContextWithHeight: if the provided height is 0,
@@ -373,4 +393,33 @@ func (b *Backend) DoCall(
 	}
 
 	return res, nil
+}
+
+// GasPrice returns the current gas price based on Ethermint's gas price oracle.
+func (b *Backend) GasPrice() (*hexutil.Big, error) {
+	var (
+		result *big.Int
+		err    error
+	)
+	if head := b.CurrentHeader(); head.BaseFee != nil {
+		result, err = b.SuggestGasTipCap(head.BaseFee)
+		if err != nil {
+			return nil, err
+		}
+		result = result.Add(result, head.BaseFee)
+	} else {
+		result = big.NewInt(b.RPCMinGasPrice())
+	}
+
+	// return at least GlobalMinGasPrice from FeeMarket module
+	minGasPrice, err := b.GlobalMinGasPrice()
+	if err != nil {
+		return nil, err
+	}
+	minGasPriceInt := minGasPrice.TruncateInt().BigInt()
+	if result.Cmp(minGasPriceInt) < 0 {
+		result = minGasPriceInt
+	}
+
+	return (*hexutil.Big)(result), nil
 }

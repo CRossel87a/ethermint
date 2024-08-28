@@ -1,24 +1,19 @@
 {
-  dotenv: '../../../scripts/.env',
+  dotenv: '../../../scripts/env',
   'ethermint_9000-1': {
     cmd: 'ethermintd',
     'start-flags': '--trace',
-    config: {
-      consensus: {
-        // larger timeout for more stable mempool tests
-        timeout_commit: '10s',
-      },
-    },
     'app-config': {
       'minimum-gas-prices': '0aphoton',
       'index-events': ['ethereum_tx.ethereumTxHash'],
       'json-rpc': {
-        address: '0.0.0.0:{EVMRPC_PORT}',
-        'ws-address': '0.0.0.0:{EVMRPC_PORT_WS}',
+        address: '127.0.0.1:{EVMRPC_PORT}',
+        'ws-address': '127.0.0.1:{EVMRPC_PORT_WS}',
         api: 'eth,net,web3,debug',
         'feehistory-cap': 100,
         'block-range-cap': 10000,
         'logs-cap': 10000,
+        'fix-revert-gas-refund-height': 1,
       },
     },
     validators: [{
@@ -44,10 +39,12 @@
       mnemonic: '${SIGNER2_MNEMONIC}',
     }],
     genesis: {
-      consensus_params: {
-        block: {
-          max_bytes: '1048576',
-          max_gas: '81500000',
+      consensus: {
+        params: {
+          block: {
+            max_bytes: '1048576',
+            max_gas: '81500000',
+          },
         },
       },
       app_state: {

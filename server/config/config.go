@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package config
 
 import (
@@ -8,11 +23,11 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/tendermint/tendermint/libs/strings"
+	"github.com/cometbft/cometbft/libs/strings"
 
+	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/server/config"
-
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	errortypes "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
 const (
@@ -20,13 +35,19 @@ const (
 	DefaultGRPCAddress = "0.0.0.0:9900"
 
 	// DefaultJSONRPCAddress is the default address the JSON-RPC server binds to.
-	DefaultJSONRPCAddress = "0.0.0.0:8545"
+	DefaultJSONRPCAddress = "127.0.0.1:8545"
 
 	// DefaultJSONRPCWsAddress is the default address the JSON-RPC WebSocket server binds to.
-	DefaultJSONRPCWsAddress = "0.0.0.0:8546"
+	DefaultJSONRPCWsAddress = "127.0.0.1:8546"
+
+	// DefaultJsonRPCMetricsAddress is the default address the JSON-RPC Metrics server binds to.
+	DefaultJSONRPCMetricsAddress = "127.0.0.1:6065"
 
 	// DefaultEVMTracer is the default vm.Tracer type
 	DefaultEVMTracer = ""
+
+	// DefaultFixRevertGasRefundHeight is the default height at which to overwrite gas refund
+	DefaultFixRevertGasRefundHeight = 0
 
 	DefaultMaxTxGasWanted = 0
 
@@ -41,14 +62,17 @@ const (
 	DefaultBlockRangeCap int32 = 10000
 
 	DefaultEVMTimeout = 5 * time.Second
+
 	// default 1.0 eth
 	DefaultTxFeeCap float64 = 1.0
 
 	DefaultHTTPTimeout = 30 * time.Second
 
 	DefaultHTTPIdleTimeout = 120 * time.Second
+
 	// DefaultAllowUnprotectedTxs value is false
 	DefaultAllowUnprotectedTxs = false
+
 	// DefaultMaxOpenConnections represents the amount of open connections (unlimited = 0)
 	DefaultMaxOpenConnections = 0
 )
@@ -110,6 +134,10 @@ type JSONRPCConfig struct {
 	MaxOpenConnections int `mapstructure:"max-open-connections"`
 	// EnableIndexer defines if enable the custom indexer service.
 	EnableIndexer bool `mapstructure:"enable-indexer"`
+	// MetricsAddress defines the metrics server to listen on
+	MetricsAddress string `mapstructure:"metrics-address"`
+	// FixRevertGasRefundHeight defines the upgrade height for fix of revert gas refund logic when transaction reverted
+	FixRevertGasRefundHeight int64 `mapstructure:"fix-revert-gas-refund-height"`
 }
 
 // TLSConfig defines the certificate and matching private key for the server.
@@ -195,22 +223,24 @@ func GetAPINamespaces() []string {
 // DefaultJSONRPCConfig returns an EVM config with the JSON-RPC API enabled by default
 func DefaultJSONRPCConfig() *JSONRPCConfig {
 	return &JSONRPCConfig{
-		Enable:              true,
-		API:                 GetDefaultAPINamespaces(),
-		Address:             DefaultJSONRPCAddress,
-		WsAddress:           DefaultJSONRPCWsAddress,
-		GasCap:              DefaultGasCap,
-		EVMTimeout:          DefaultEVMTimeout,
-		TxFeeCap:            DefaultTxFeeCap,
-		FilterCap:           DefaultFilterCap,
-		FeeHistoryCap:       DefaultFeeHistoryCap,
-		BlockRangeCap:       DefaultBlockRangeCap,
-		LogsCap:             DefaultLogsCap,
-		HTTPTimeout:         DefaultHTTPTimeout,
-		HTTPIdleTimeout:     DefaultHTTPIdleTimeout,
-		AllowUnprotectedTxs: DefaultAllowUnprotectedTxs,
-		MaxOpenConnections:  DefaultMaxOpenConnections,
-		EnableIndexer:       false,
+		Enable:                   true,
+		API:                      GetDefaultAPINamespaces(),
+		Address:                  DefaultJSONRPCAddress,
+		WsAddress:                DefaultJSONRPCWsAddress,
+		GasCap:                   DefaultGasCap,
+		EVMTimeout:               DefaultEVMTimeout,
+		TxFeeCap:                 DefaultTxFeeCap,
+		FilterCap:                DefaultFilterCap,
+		FeeHistoryCap:            DefaultFeeHistoryCap,
+		BlockRangeCap:            DefaultBlockRangeCap,
+		LogsCap:                  DefaultLogsCap,
+		HTTPTimeout:              DefaultHTTPTimeout,
+		HTTPIdleTimeout:          DefaultHTTPIdleTimeout,
+		AllowUnprotectedTxs:      DefaultAllowUnprotectedTxs,
+		MaxOpenConnections:       DefaultMaxOpenConnections,
+		EnableIndexer:            false,
+		MetricsAddress:           DefaultJSONRPCMetricsAddress,
+		FixRevertGasRefundHeight: DefaultFixRevertGasRefundHeight,
 	}
 }
 
@@ -304,21 +334,23 @@ func GetConfig(v *viper.Viper) (Config, error) {
 			MaxTxGasWanted: v.GetUint64("evm.max-tx-gas-wanted"),
 		},
 		JSONRPC: JSONRPCConfig{
-			Enable:             v.GetBool("json-rpc.enable"),
-			API:                v.GetStringSlice("json-rpc.api"),
-			Address:            v.GetString("json-rpc.address"),
-			WsAddress:          v.GetString("json-rpc.ws-address"),
-			GasCap:             v.GetUint64("json-rpc.gas-cap"),
-			FilterCap:          v.GetInt32("json-rpc.filter-cap"),
-			FeeHistoryCap:      v.GetInt32("json-rpc.feehistory-cap"),
-			TxFeeCap:           v.GetFloat64("json-rpc.txfee-cap"),
-			EVMTimeout:         v.GetDuration("json-rpc.evm-timeout"),
-			LogsCap:            v.GetInt32("json-rpc.logs-cap"),
-			BlockRangeCap:      v.GetInt32("json-rpc.block-range-cap"),
-			HTTPTimeout:        v.GetDuration("json-rpc.http-timeout"),
-			HTTPIdleTimeout:    v.GetDuration("json-rpc.http-idle-timeout"),
-			MaxOpenConnections: v.GetInt("json-rpc.max-open-connections"),
-			EnableIndexer:      v.GetBool("json-rpc.enable-indexer"),
+			Enable:                   v.GetBool("json-rpc.enable"),
+			API:                      v.GetStringSlice("json-rpc.api"),
+			Address:                  v.GetString("json-rpc.address"),
+			WsAddress:                v.GetString("json-rpc.ws-address"),
+			GasCap:                   v.GetUint64("json-rpc.gas-cap"),
+			FilterCap:                v.GetInt32("json-rpc.filter-cap"),
+			FeeHistoryCap:            v.GetInt32("json-rpc.feehistory-cap"),
+			TxFeeCap:                 v.GetFloat64("json-rpc.txfee-cap"),
+			EVMTimeout:               v.GetDuration("json-rpc.evm-timeout"),
+			LogsCap:                  v.GetInt32("json-rpc.logs-cap"),
+			BlockRangeCap:            v.GetInt32("json-rpc.block-range-cap"),
+			HTTPTimeout:              v.GetDuration("json-rpc.http-timeout"),
+			HTTPIdleTimeout:          v.GetDuration("json-rpc.http-idle-timeout"),
+			MaxOpenConnections:       v.GetInt("json-rpc.max-open-connections"),
+			EnableIndexer:            v.GetBool("json-rpc.enable-indexer"),
+			MetricsAddress:           v.GetString("json-rpc.metrics-address"),
+			FixRevertGasRefundHeight: v.GetInt64("json-rpc.fix-revert-gas-refund-height"),
 		},
 		TLS: TLSConfig{
 			CertificatePath: v.GetString("tls.certificate-path"),
@@ -339,15 +371,15 @@ func ParseConfig(v *viper.Viper) (*Config, error) {
 // ValidateBasic returns an error any of the application configuration fields are invalid
 func (c Config) ValidateBasic() error {
 	if err := c.EVM.Validate(); err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrAppConfig, "invalid evm config value: %s", err.Error())
+		return errorsmod.Wrapf(errortypes.ErrAppConfig, "invalid evm config value: %s", err.Error())
 	}
 
 	if err := c.JSONRPC.Validate(); err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrAppConfig, "invalid json-rpc config value: %s", err.Error())
+		return errorsmod.Wrapf(errortypes.ErrAppConfig, "invalid json-rpc config value: %s", err.Error())
 	}
 
 	if err := c.TLS.Validate(); err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrAppConfig, "invalid tls config value: %s", err.Error())
+		return errorsmod.Wrapf(errortypes.ErrAppConfig, "invalid tls config value: %s", err.Error())
 	}
 
 	return c.Config.ValidateBasic()

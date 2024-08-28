@@ -1,9 +1,25 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
 	"bytes"
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -11,7 +27,7 @@ import (
 )
 
 var (
-	_ authtypes.AccountI                 = (*EthAccount)(nil)
+	_ types.AccountI                     = (*EthAccount)(nil)
 	_ EthAccountI                        = (*EthAccount)(nil)
 	_ authtypes.GenesisAccount           = (*EthAccount)(nil)
 	_ codectypes.UnpackInterfacesMessage = (*EthAccount)(nil)
@@ -28,7 +44,7 @@ const (
 
 // EthAccountI represents the interface of an EVM compatible account
 type EthAccountI interface {
-	authtypes.AccountI
+	types.AccountI
 	// EthAddress returns the ethereum Address representation of the AccAddress
 	EthAddress() common.Address
 	// CodeHash is the keccak256 hash of the contract code (if any)
@@ -45,7 +61,7 @@ type EthAccountI interface {
 
 // ProtoAccount defines the prototype function for BaseAccount used for an
 // AccountKeeper.
-func ProtoAccount() authtypes.AccountI {
+func ProtoAccount() types.AccountI {
 	return &EthAccount{
 		BaseAccount: &authtypes.BaseAccount{},
 		CodeHash:    common.BytesToHash(emptyCodeHash).String(),

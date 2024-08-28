@@ -1,14 +1,28 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package client
 
 import (
 	"bufio"
 
+	"github.com/cometbft/cometbft/libs/cli"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/keys"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
-	"github.com/tendermint/tendermint/libs/cli"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	clientkeys "github.com/evmos/ethermint/client/keys"
@@ -49,7 +63,7 @@ The pass backend requires GnuPG: https://gnupg.org/
 	addCmd := keys.AddKeyCommand()
 
 	// update the default signing algorithm value to "eth_secp256k1"
-	algoFlag := addCmd.Flag("algo")
+	algoFlag := addCmd.Flag(flags.FlagKeyAlgorithm)
 	algoFlag.DefValue = string(hd.EthSecp256k1Type)
 	err := algoFlag.Value.Set(string(hd.EthSecp256k1Type))
 	if err != nil {
@@ -65,8 +79,8 @@ The pass backend requires GnuPG: https://gnupg.org/
 		keys.ImportKeyCommand(),
 		keys.ListKeysCmd(),
 		keys.ShowKeysCmd(),
-		flags.LineBreak,
 		keys.DeleteKeyCommand(),
+		keys.RenameKeyCommand(),
 		keys.ParseKeyStringCommand(),
 		keys.MigrateCommand(),
 		flags.LineBreak,
@@ -82,23 +96,11 @@ The pass backend requires GnuPG: https://gnupg.org/
 }
 
 func runAddCmd(cmd *cobra.Command, args []string) error {
-	buf := bufio.NewReader(cmd.InOrStdin())
-	clientCtx := client.GetClientContextFromCmd(cmd)
-
-	var (
-		kr  keyring.Keyring
-		err error
-	)
-
-	dryRun, _ := cmd.Flags().GetBool(flags.FlagDryRun)
-	if dryRun {
-		kr, err = keyring.New(sdk.KeyringServiceName(), keyring.BackendMemory, clientCtx.KeyringDir, buf, hd.EthSecp256k1Option())
-		clientCtx = clientCtx.WithKeyring(kr)
-	}
-
+	clientCtx := client.GetClientContextFromCmd(cmd).WithKeyringOptions(hd.EthSecp256k1Option())
+	clientCtx, err := client.ReadPersistentCommandFlags(clientCtx, cmd.Flags())
 	if err != nil {
 		return err
 	}
-
+	buf := bufio.NewReader(clientCtx.Input)
 	return clientkeys.RunAddCmd(clientCtx, cmd, args, buf)
 }

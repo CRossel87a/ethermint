@@ -5,18 +5,28 @@ import (
 	"io"
 	"testing"
 
-	"cosmossdk.io/simapp"
-	"github.com/evmos/ethermint/encoding"
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-	dbm "github.com/tendermint/tm-db"
+	"cosmossdk.io/log"
+	abci "github.com/cometbft/cometbft/abci/types"
+	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/baseapp"
+	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 )
 
 func BenchmarkEthermintApp_ExportAppStateAndValidators(b *testing.B) {
 	db := dbm.NewMemDB()
-	app := NewEthermintApp(log.NewTMLogger(io.Discard), db, nil, true, map[int64]bool{}, DefaultNodeHome, 0, encoding.MakeConfig(ModuleBasics), simapp.EmptyAppOptions{})
+	app := NewEthermintApp(
+		log.NewLogger(io.Discard),
+		db,
+		nil,
+		true,
+		map[int64]bool{},
+		DefaultNodeHome,
+		0,
+		simtestutil.NewAppOptionsWithFlagHome(DefaultNodeHome),
+		baseapp.SetChainID(ChainID),
+	)
 
-	genesisState := NewDefaultGenesisState()
+	genesisState := NewTestGenesisState(app.AppCodec())
 	stateBytes, err := json.MarshalIndent(genesisState, "", "  ")
 	if err != nil {
 		b.Fatal(err)
@@ -24,8 +34,8 @@ func BenchmarkEthermintApp_ExportAppStateAndValidators(b *testing.B) {
 
 	// Initialize the chain
 	app.InitChain(
-		abci.RequestInitChain{
-			ChainId:       "ethermint_9000-1",
+		&abci.RequestInitChain{
+			ChainId:       ChainID,
 			Validators:    []abci.ValidatorUpdate{},
 			AppStateBytes: stateBytes,
 		},
@@ -36,8 +46,18 @@ func BenchmarkEthermintApp_ExportAppStateAndValidators(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		// Making a new app object with the db, so that initchain hasn't been called
-		app2 := NewEthermintApp(log.NewTMLogger(log.NewSyncWriter(io.Discard)), db, nil, true, map[int64]bool{}, DefaultNodeHome, 0, encoding.MakeConfig(ModuleBasics), simapp.EmptyAppOptions{})
-		if _, err := app2.ExportAppStateAndValidators(false, []string{}); err != nil {
+		app2 := NewEthermintApp(
+			log.NewLogger(io.Discard),
+			db,
+			nil,
+			true,
+			map[int64]bool{},
+			DefaultNodeHome,
+			0,
+			simtestutil.NewAppOptionsWithFlagHome(DefaultNodeHome),
+			baseapp.SetChainID(ChainID),
+		)
+		if _, err := app2.ExportAppStateAndValidators(false, []string{}, []string{}); err != nil {
 			b.Fatal(err)
 		}
 	}

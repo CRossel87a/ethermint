@@ -1,17 +1,33 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/big"
 	"strings"
 
-	abci "github.com/tendermint/tendermint/abci/types"
-	tmtypes "github.com/tendermint/tendermint/types"
+	abci "github.com/cometbft/cometbft/abci/types"
+	tmrpcclient "github.com/cometbft/cometbft/rpc/client"
+	tmtypes "github.com/cometbft/cometbft/types"
 
+	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/client"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	errortypes "github.com/cosmos/cosmos-sdk/types/errors"
 
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	feemarkettypes "github.com/evmos/ethermint/x/feemarket/types"
@@ -31,7 +47,7 @@ const ExceedBlockGasLimitError = "out of gas in location: block gas meter; gasWa
 func RawTxToEthTx(clientCtx client.Context, txBz tmtypes.Tx) ([]*evmtypes.MsgEthereumTx, error) {
 	tx, err := clientCtx.TxConfig.TxDecoder()(txBz)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrJSONUnmarshal, err.Error())
+		return nil, errorsmod.Wrap(errortypes.ErrJSONUnmarshal, err.Error())
 	}
 
 	ethTxs := make([]*evmtypes.MsgEthereumTx, len(tx.GetMsgs()))
@@ -76,7 +92,12 @@ func EthHeaderFromTendermint(header tmtypes.Header, bloom ethtypes.Bloom, baseFe
 
 // BlockMaxGasFromConsensusParams returns the gas limit for the current block from the chain consensus params.
 func BlockMaxGasFromConsensusParams(goCtx context.Context, clientCtx client.Context, blockHeight int64) (int64, error) {
-	resConsParams, err := clientCtx.Client.ConsensusParams(goCtx, &blockHeight)
+	tmrpcClient, ok := clientCtx.Client.(tmrpcclient.Client)
+	if !ok {
+		panic("incorrect tm rpc client")
+	}
+
+	resConsParams, err := tmrpcClient.ConsensusParams(goCtx, &blockHeight)
 	if err != nil {
 		return int64(^uint32(0)), err
 	}
@@ -144,15 +165,17 @@ func NewTransactionFromMsg(
 	blockHash common.Hash,
 	blockNumber, index uint64,
 	baseFee *big.Int,
+	chainID *big.Int,
 ) (*RPCTransaction, error) {
 	tx := msg.AsTransaction()
-	return NewRPCTransaction(tx, blockHash, blockNumber, index, baseFee)
+	return NewRPCTransaction(tx, blockHash, blockNumber, index, baseFee, chainID)
 }
 
 // NewTransactionFromData returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
 func NewRPCTransaction(
 	tx *ethtypes.Transaction, blockHash common.Hash, blockNumber, index uint64, baseFee *big.Int,
+	chainID *big.Int,
 ) (*RPCTransaction, error) {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
@@ -179,6 +202,7 @@ func NewRPCTransaction(
 		V:        (*hexutil.Big)(v),
 		R:        (*hexutil.Big)(r),
 		S:        (*hexutil.Big)(s),
+		ChainID:  (*hexutil.Big)(chainID),
 	}
 	if blockHash != (common.Hash{}) {
 		result.BlockHash = &blockHash
@@ -216,8 +240,8 @@ func BaseFeeFromEvents(events []abci.Event) *big.Int {
 		}
 
 		for _, attr := range event.Attributes {
-			if bytes.Equal(attr.Key, []byte(feemarkettypes.AttributeKeyBaseFee)) {
-				result, success := new(big.Int).SetString(string(attr.Value), 10)
+			if attr.Key == feemarkettypes.AttributeKeyBaseFee {
+				result, success := new(big.Int).SetString(attr.Value, 10)
 				if success {
 					return result
 				}
@@ -250,12 +274,12 @@ func CheckTxFee(gasPrice *big.Int, gas uint64, cap float64) error {
 }
 
 // TxExceedBlockGasLimit returns true if the tx exceeds block gas limit.
-func TxExceedBlockGasLimit(res *abci.ResponseDeliverTx) bool {
+func TxExceedBlockGasLimit(res *abci.ExecTxResult) bool {
 	return strings.Contains(res.Log, ExceedBlockGasLimitError)
 }
 
-// TxSuccessOrExceedsBlockGasLimit returnsrue if the transaction was successful
+// TxSuccessOrExceedsBlockGasLimit returns true if the transaction was successful
 // or if it failed with an ExceedBlockGasLimit error
-func TxSuccessOrExceedsBlockGasLimit(res *abci.ResponseDeliverTx) bool {
+func TxSuccessOrExceedsBlockGasLimit(res *abci.ExecTxResult) bool {
 	return res.Code == 0 || TxExceedBlockGasLimit(res)
 }

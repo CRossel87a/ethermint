@@ -7,6 +7,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -46,7 +47,7 @@ func newSignedEthTx(
 	addr sdk.Address,
 	krSigner keyring.Signer,
 	ethSigner ethtypes.Signer,
-) (*ethtypes.Transaction, error) {
+) (*evmtypes.MsgEthereumTx, error) {
 	var ethTx *ethtypes.Transaction
 	switch txData := txData.(type) {
 	case *ethtypes.AccessListTx:
@@ -62,7 +63,7 @@ func newSignedEthTx(
 		return nil, errors.New("unknown transaction type!")
 	}
 
-	sig, _, err := krSigner.SignByAddress(addr, ethTx.Hash().Bytes())
+	sig, _, err := krSigner.SignByAddress(addr, ethTx.Hash().Bytes(), signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON)
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +73,14 @@ func newSignedEthTx(
 		return nil, err
 	}
 
-	return ethTx, nil
+	var msg evmtypes.MsgEthereumTx
+	if err := msg.FromEthereumTx(ethTx); err != nil {
+		return nil, err
+	}
+	return &msg, nil
 }
 
-func newNativeMessage(
+func newEthMsgTx(
 	nonce uint64,
 	blockHeight int64,
 	address common.Address,
@@ -85,14 +90,11 @@ func newNativeMessage(
 	txType byte,
 	data []byte,
 	accessList ethtypes.AccessList,
-) (core.Message, error) {
-	msgSigner := ethtypes.MakeSigner(cfg, big.NewInt(blockHeight))
-
+) (*evmtypes.MsgEthereumTx, *big.Int, error) {
 	var (
 		ethTx   *ethtypes.Transaction
 		baseFee *big.Int
 	)
-
 	switch txType {
 	case ethtypes.LegacyTxType:
 		templateLegacyTx.Nonce = nonce
@@ -122,14 +124,31 @@ func newNativeMessage(
 		ethTx = ethtypes.NewTx(templateDynamicFeeTx)
 		baseFee = big.NewInt(3)
 	default:
-		return nil, errors.New("unsupport tx type")
+		return nil, baseFee, errors.New("unsupport tx type")
 	}
 
 	msg := &evmtypes.MsgEthereumTx{}
 	msg.FromEthereumTx(ethTx)
 	msg.From = address.Hex()
 
-	if err := msg.Sign(ethSigner, krSigner); err != nil {
+	return msg, baseFee, msg.Sign(ethSigner, krSigner)
+}
+
+func newNativeMessage(
+	nonce uint64,
+	blockHeight int64,
+	address common.Address,
+	cfg *params.ChainConfig,
+	krSigner keyring.Signer,
+	ethSigner ethtypes.Signer,
+	txType byte,
+	data []byte,
+	accessList ethtypes.AccessList,
+) (core.Message, error) {
+	msgSigner := ethtypes.MakeSigner(cfg, big.NewInt(blockHeight))
+
+	msg, baseFee, err := newEthMsgTx(nonce, blockHeight, address, cfg, krSigner, ethSigner, txType, data, accessList)
+	if err != nil {
 		return nil, err
 	}
 
@@ -143,7 +162,7 @@ func newNativeMessage(
 
 func BenchmarkApplyTransaction(b *testing.B) {
 	suite := KeeperTestSuite{enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	ethSigner := ethtypes.LatestSignerForChainID(suite.app.EvmKeeper.ChainID())
 
@@ -170,7 +189,7 @@ func BenchmarkApplyTransaction(b *testing.B) {
 
 func BenchmarkApplyTransactionWithLegacyTx(b *testing.B) {
 	suite := KeeperTestSuite{enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	ethSigner := ethtypes.LatestSignerForChainID(suite.app.EvmKeeper.ChainID())
 
@@ -197,7 +216,7 @@ func BenchmarkApplyTransactionWithLegacyTx(b *testing.B) {
 
 func BenchmarkApplyTransactionWithDynamicFeeTx(b *testing.B) {
 	suite := KeeperTestSuite{enableFeemarket: true, enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	ethSigner := ethtypes.LatestSignerForChainID(suite.app.EvmKeeper.ChainID())
 
@@ -224,7 +243,7 @@ func BenchmarkApplyTransactionWithDynamicFeeTx(b *testing.B) {
 
 func BenchmarkApplyMessage(b *testing.B) {
 	suite := KeeperTestSuite{enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	params := suite.app.EvmKeeper.GetParams(suite.ctx)
 	ethCfg := params.ChainConfig.EthereumConfig(suite.app.EvmKeeper.ChainID())
@@ -259,7 +278,7 @@ func BenchmarkApplyMessage(b *testing.B) {
 
 func BenchmarkApplyMessageWithLegacyTx(b *testing.B) {
 	suite := KeeperTestSuite{enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	params := suite.app.EvmKeeper.GetParams(suite.ctx)
 	ethCfg := params.ChainConfig.EthereumConfig(suite.app.EvmKeeper.ChainID())
@@ -294,7 +313,7 @@ func BenchmarkApplyMessageWithLegacyTx(b *testing.B) {
 
 func BenchmarkApplyMessageWithDynamicFeeTx(b *testing.B) {
 	suite := KeeperTestSuite{enableFeemarket: true, enableLondonHF: true}
-	suite.SetupTest()
+	suite.SetupTestWithT(b)
 
 	params := suite.app.EvmKeeper.GetParams(suite.ctx)
 	ethCfg := params.ChainConfig.EthereumConfig(suite.app.EvmKeeper.ChainID())

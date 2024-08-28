@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package backend
 
 import (
@@ -5,13 +20,15 @@ import (
 	"math/big"
 	"time"
 
+	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
+	tmtypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdkcrypto "github.com/cosmos/cosmos-sdk/crypto"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdkconfig "github.com/cosmos/cosmos-sdk/server/config"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,7 +39,6 @@ import (
 	"github.com/evmos/ethermint/server/config"
 	ethermint "github.com/evmos/ethermint/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
-	tmtypes "github.com/tendermint/tendermint/types"
 )
 
 // Accounts returns the list of accounts available to this node.
@@ -35,7 +51,11 @@ func (b *Backend) Accounts() ([]common.Address, error) {
 	}
 
 	for _, info := range infos {
-		addressBytes := info.GetPubKey().Address().Bytes()
+		pubKey, err := info.GetPubKey()
+		if err != nil {
+			return nil, err
+		}
+		addressBytes := pubKey.Address().Bytes()
 		addresses = append(addresses, common.BytesToAddress(addressBytes))
 	}
 
@@ -79,8 +99,13 @@ func (b *Backend) SetEtherbase(etherbase common.Address) bool {
 	withdrawAddr := sdk.AccAddress(etherbase.Bytes())
 	msg := distributiontypes.NewMsgSetWithdrawAddress(delAddr, withdrawAddr)
 
-	if err := msg.ValidateBasic(); err != nil {
-		b.logger.Debug("tx failed basic validation", "error", err.Error())
+	// validity check
+	if _, err := sdk.AccAddressFromBech32(msg.DelegatorAddress); err != nil {
+		b.logger.Debug("invalid delegator address: ", err.Error())
+		return false
+	}
+	if _, err := sdk.AccAddressFromBech32(msg.WithdrawAddress); err != nil {
+		b.logger.Debug("invalid withdraw address: ", err.Error())
 		return false
 	}
 
@@ -130,7 +155,7 @@ func (b *Backend) SetEtherbase(etherbase common.Address) bool {
 	txFactory = txFactory.WithGas(gas)
 
 	value := new(big.Int).SetUint64(gas * minGasPriceValue.Ceil().TruncateInt().Uint64())
-	fees := sdk.Coins{sdk.NewCoin(denom, sdk.NewIntFromBigInt(value))}
+	fees := sdk.Coins{sdk.NewCoin(denom, sdkmath.NewIntFromBigInt(value))}
 	builder.SetFeeAmount(fees)
 	builder.SetGasLimit(gas)
 
@@ -140,7 +165,7 @@ func (b *Backend) SetEtherbase(etherbase common.Address) bool {
 		return false
 	}
 
-	if err := tx.Sign(txFactory, keyInfo.GetName(), builder, false); err != nil {
+	if err := tx.Sign(b.ctx, txFactory, keyInfo.Name, builder, false); err != nil {
 		b.logger.Debug("failed to sign tx", "error", err.Error())
 		return false
 	}
@@ -160,7 +185,7 @@ func (b *Backend) SetEtherbase(etherbase common.Address) bool {
 	syncCtx := b.clientCtx.WithBroadcastMode(flags.BroadcastSync)
 	rsp, err := syncCtx.BroadcastTx(txBytes)
 	if rsp != nil && rsp.Code != 0 {
-		err = sdkerrors.ABCIError(rsp.Codespace, rsp.Code, rsp.RawLog)
+		err = errorsmod.ABCIError(rsp.Codespace, rsp.Code, rsp.RawLog)
 	}
 	if err != nil {
 		b.logger.Debug("failed to broadcast tx", "error", err.Error())
@@ -217,15 +242,24 @@ func (b *Backend) ListAccounts() ([]common.Address, error) {
 	}
 
 	for _, info := range list {
-		addrs = append(addrs, common.BytesToAddress(info.GetPubKey().Address()))
+		pubKey, err := info.GetPubKey()
+		if err != nil {
+			return nil, err
+		}
+		addrs = append(addrs, common.BytesToAddress(pubKey.Address()))
 	}
 
 	return addrs, nil
 }
 
 // NewAccount will create a new account and returns the address for the new account.
-func (b *Backend) NewMnemonic(uid string, language keyring.Language, hdPath, bip39Passphrase string, algo keyring.SignatureAlgo) (keyring.Info, error) {
-	info, _, err := b.clientCtx.Keyring.NewMnemonic(uid, keyring.English, bip39Passphrase, bip39Passphrase, algo)
+func (b *Backend) NewMnemonic(uid string,
+	_ keyring.Language,
+	hdPath,
+	bip39Passphrase string,
+	algo keyring.SignatureAlgo,
+) (*keyring.Record, error) {
+	info, _, err := b.clientCtx.Keyring.NewMnemonic(uid, keyring.English, hdPath, bip39Passphrase, algo)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +291,7 @@ func (b *Backend) SetGasPrice(gasPrice hexutil.Big) bool {
 		unit = minGasPrices[0].Denom
 	}
 
-	c := sdk.NewDecCoin(unit, sdk.NewIntFromBigInt(gasPrice.ToInt()))
+	c := sdk.NewDecCoin(unit, sdkmath.NewIntFromBigInt(gasPrice.ToInt()))
 
 	appConf.SetMinGasPrices(sdk.DecCoins{c})
 	sdkconfig.WriteConfigFile(b.clientCtx.Viper.ConfigFileUsed(), appConf)

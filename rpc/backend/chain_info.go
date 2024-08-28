@@ -1,10 +1,29 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package backend
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
 
+	sdkmath "cosmossdk.io/math"
+	tmrpcclient "github.com/cometbft/cometbft/rpc/client"
+	tmrpctypes "github.com/cometbft/cometbft/rpc/core/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -14,7 +33,6 @@ import (
 	ethermint "github.com/evmos/ethermint/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	feemarkettypes "github.com/evmos/ethermint/x/feemarket/types"
-	tmrpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
 // ChainID is the EIP-155 replay-protection chain id for the current ethereum chain config.
@@ -48,10 +66,10 @@ func (b *Backend) ChainConfig() *params.ChainConfig {
 }
 
 // GlobalMinGasPrice returns MinGasPrice param from FeeMarket
-func (b *Backend) GlobalMinGasPrice() (sdk.Dec, error) {
+func (b *Backend) GlobalMinGasPrice() (sdkmath.LegacyDec, error) {
 	res, err := b.queryClient.FeeMarket.Params(b.ctx, &feemarkettypes.QueryParamsRequest{})
 	if err != nil {
-		return sdk.ZeroDec(), err
+		return sdkmath.LegacyZeroDec(), err
 	}
 	return res.Params.MinGasPrice, nil
 }
@@ -67,10 +85,10 @@ func (b *Backend) BaseFee(blockRes *tmrpctypes.ResultBlockResults) (*big.Int, er
 		// we can't tell if it's london HF not enabled or the state is pruned,
 		// in either case, we'll fallback to parsing from begin blocker event,
 		// faster to iterate reversely
-		for i := len(blockRes.BeginBlockEvents) - 1; i >= 0; i-- {
-			evt := blockRes.BeginBlockEvents[i]
+		for i := len(blockRes.FinalizeBlockEvents) - 1; i >= 0; i-- {
+			evt := blockRes.FinalizeBlockEvents[i]
 			if evt.Type == feemarkettypes.EventTypeFeeMarket && len(evt.Attributes) > 0 {
-				baseFee, err := strconv.ParseInt(string(evt.Attributes[0].Value), 10, 64)
+				baseFee, err := strconv.ParseInt(evt.Attributes[0].Value, 10, 64)
 				if err == nil {
 					return big.NewInt(baseFee), nil
 				}
@@ -96,7 +114,11 @@ func (b *Backend) CurrentHeader() *ethtypes.Header {
 // PendingTransactions returns the transactions that are in the transaction pool
 // and have a from address that is one of the accounts this node manages.
 func (b *Backend) PendingTransactions() ([]*sdk.Tx, error) {
-	res, err := b.clientCtx.Client.UnconfirmedTxs(b.ctx, nil)
+	mc, ok := b.clientCtx.Client.(tmrpcclient.MempoolClient)
+	if !ok {
+		return nil, errors.New("invalid rpc client")
+	}
+	res, err := mc.UnconfirmedTxs(b.ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -146,44 +168,45 @@ func (b *Backend) FeeHistory(
 ) (*rpctypes.FeeHistoryResult, error) {
 	blockEnd := int64(lastBlock)
 
-	if blockEnd <= 0 {
+	if blockEnd < 0 {
 		blockNumber, err := b.BlockNumber()
 		if err != nil {
 			return nil, err
 		}
 		blockEnd = int64(blockNumber)
 	}
-	userBlockCountInt := int64(userBlockCount)
+
+	blocks := int64(userBlockCount)
 	maxBlockCount := int64(b.cfg.JSONRPC.FeeHistoryCap)
-	if userBlockCountInt > maxBlockCount {
-		return nil, fmt.Errorf("FeeHistory user block count %d higher than %d", userBlockCountInt, maxBlockCount)
-	}
-	blockStart := blockEnd - userBlockCountInt
-	if blockStart < 0 {
-		blockStart = 0
+	if blocks > maxBlockCount {
+		return nil, fmt.Errorf("FeeHistory user block count %d higher than %d", blocks, maxBlockCount)
 	}
 
-	blockCount := blockEnd - blockStart
-
+	if blockEnd+1 < blocks {
+		blocks = blockEnd + 1
+	}
+	// Ensure not trying to retrieve before genesis.
+	blockStart := blockEnd + 1 - blocks
 	oldestBlock := (*hexutil.Big)(big.NewInt(blockStart))
 
 	// prepare space
-	reward := make([][]*hexutil.Big, blockCount)
+	reward := make([][]*hexutil.Big, blocks)
 	rewardCount := len(rewardPercentiles)
-	for i := 0; i < int(blockCount); i++ {
+	for i := 0; i < int(blocks); i++ {
 		reward[i] = make([]*hexutil.Big, rewardCount)
 	}
-	thisBaseFee := make([]*hexutil.Big, blockCount)
-	thisGasUsedRatio := make([]float64, blockCount)
+
+	thisBaseFee := make([]*hexutil.Big, blocks+1)
+	thisGasUsedRatio := make([]float64, blocks)
 
 	// rewards should only be calculated if reward percentiles were included
 	calculateRewards := rewardCount != 0
 
 	// fetch block
-	for blockID := blockStart; blockID < blockEnd; blockID++ {
+	for blockID := blockStart; blockID <= blockEnd; blockID++ {
 		index := int32(blockID - blockStart)
 		// tendermint block
-		tendermintblock, err := b.GetTendermintBlockByNumber(rpctypes.BlockNumber(blockID))
+		tendermintblock, err := b.TendermintBlockByNumber(rpctypes.BlockNumber(blockID))
 		if tendermintblock == nil {
 			return nil, err
 		}
@@ -195,7 +218,7 @@ func (b *Backend) FeeHistory(
 		}
 
 		// tendermint block result
-		tendermintBlockResult, err := b.GetTendermintBlockResultByNumber(&tendermintblock.Block.Height)
+		tendermintBlockResult, err := b.TendermintBlockResultByNumber(&tendermintblock.Block.Height)
 		if tendermintBlockResult == nil {
 			b.logger.Debug("block result not found", "height", tendermintblock.Block.Height, "error", err.Error())
 			return nil, err
@@ -209,6 +232,7 @@ func (b *Backend) FeeHistory(
 
 		// copy
 		thisBaseFee[index] = (*hexutil.Big)(oneFeeHistory.BaseFee)
+		thisBaseFee[index+1] = (*hexutil.Big)(oneFeeHistory.NextBaseFee)
 		thisGasUsedRatio[index] = oneFeeHistory.GasUsedRatio
 		if calculateRewards {
 			for j := 0; j < rewardCount; j++ {

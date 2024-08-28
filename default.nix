@@ -3,9 +3,9 @@
 , rev ? "dirty"
 }:
 let
-  version = "v0.17.1";
+  version = "v0.20.0-rc2";
   pname = "ethermintd";
-  tags = [ "ledger" "netgo" ];
+  tags = [ "netgo" ];
   ldflags = lib.concatStringsSep "\n" ([
     "-X github.com/cosmos/cosmos-sdk/version.Name=ethermint"
     "-X github.com/cosmos/cosmos-sdk/version.AppName=${pname}"
@@ -17,7 +17,7 @@ in
 buildGoApplication rec {
   inherit pname version tags ldflags;
   src = lib.sourceByRegex ./. [
-    "^(x|app|cmd|client|server|crypto|rpc|types|encoding|ethereum|indexer|testutil|version|go.mod|go.sum|gomod2nix.toml)($|/.*)"
+    "^(x|api|app|cmd|client|server|crypto|rpc|types|encoding|ethereum|indexer|testutil|version|go.mod|go.sum|gomod2nix.toml)($|/.*)"
     "^tests(/.*[.]go)?$"
   ];
   modules = ./gomod2nix.toml;

@@ -1,12 +1,30 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package keeper
 
 import (
 	"fmt"
 	"math/big"
 
-	"github.com/cosmos/cosmos-sdk/store/prefix"
+	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
+	"cosmossdk.io/store/prefix"
+	storetypes "cosmossdk.io/store/types"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
 	ethermint "github.com/evmos/ethermint/types"
 	"github.com/evmos/ethermint/x/evm/statedb"
@@ -32,9 +50,10 @@ func (k *Keeper) GetAccount(ctx sdk.Context, addr common.Address) *statedb.Accou
 
 // GetState loads contract state from database, implements `statedb.Keeper` interface.
 func (k *Keeper) GetState(ctx sdk.Context, addr common.Address, key common.Hash) common.Hash {
-	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.AddressStoragePrefix(addr))
+	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	prefixStore := prefix.NewStore(store, types.AddressStoragePrefix(addr))
 
-	value := store.Get(key.Bytes())
+	value := prefixStore.Get(key.Bytes())
 	if len(value) == 0 {
 		return common.Hash{}
 	}
@@ -44,16 +63,17 @@ func (k *Keeper) GetState(ctx sdk.Context, addr common.Address, key common.Hash)
 
 // GetCode loads contract code from database, implements `statedb.Keeper` interface.
 func (k *Keeper) GetCode(ctx sdk.Context, codeHash common.Hash) []byte {
-	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.KeyPrefixCode)
-	return store.Get(codeHash.Bytes())
+	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	prefixStore := prefix.NewStore(store, types.KeyPrefixCode)
+	return prefixStore.Get(codeHash.Bytes())
 }
 
 // ForEachStorage iterate contract storage, callback return false to break early
 func (k *Keeper) ForEachStorage(ctx sdk.Context, addr common.Address, cb func(key, value common.Hash) bool) {
-	store := ctx.KVStore(k.storeKey)
+	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
 	prefix := types.AddressStoragePrefix(addr)
 
-	iterator := sdk.KVStorePrefixIterator(store, prefix)
+	iterator := storetypes.KVStorePrefixIterator(store, prefix)
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {
@@ -78,7 +98,7 @@ func (k *Keeper) SetBalance(ctx sdk.Context, addr common.Address, amount *big.In
 	switch delta.Sign() {
 	case 1:
 		// mint
-		coins := sdk.NewCoins(sdk.NewCoin(params.EvmDenom, sdk.NewIntFromBigInt(delta)))
+		coins := sdk.NewCoins(sdk.NewCoin(params.EvmDenom, sdkmath.NewIntFromBigInt(delta)))
 		if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, coins); err != nil {
 			return err
 		}
@@ -87,7 +107,7 @@ func (k *Keeper) SetBalance(ctx sdk.Context, addr common.Address, amount *big.In
 		}
 	case -1:
 		// burn
-		coins := sdk.NewCoins(sdk.NewCoin(params.EvmDenom, sdk.NewIntFromBigInt(new(big.Int).Neg(delta))))
+		coins := sdk.NewCoins(sdk.NewCoin(params.EvmDenom, sdkmath.NewIntFromBigInt(new(big.Int).Neg(delta))))
 		if err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, cosmosAddr, types.ModuleName, coins); err != nil {
 			return err
 		}
@@ -139,13 +159,14 @@ func (k *Keeper) SetAccount(ctx sdk.Context, addr common.Address, account stated
 
 // SetState update contract storage, delete if value is empty.
 func (k *Keeper) SetState(ctx sdk.Context, addr common.Address, key common.Hash, value []byte) {
-	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.AddressStoragePrefix(addr))
+	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	prefixStore := prefix.NewStore(store, types.AddressStoragePrefix(addr))
 	action := "updated"
 	if len(value) == 0 {
-		store.Delete(key.Bytes())
+		prefixStore.Delete(key.Bytes())
 		action = "deleted"
 	} else {
-		store.Set(key.Bytes(), value)
+		prefixStore.Set(key.Bytes(), value)
 	}
 	k.Logger(ctx).Debug(
 		fmt.Sprintf("state %s", action),
@@ -156,15 +177,16 @@ func (k *Keeper) SetState(ctx sdk.Context, addr common.Address, key common.Hash,
 
 // SetCode set contract code, delete if code is empty.
 func (k *Keeper) SetCode(ctx sdk.Context, codeHash, code []byte) {
-	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.KeyPrefixCode)
+	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	prefixStore := prefix.NewStore(store, types.KeyPrefixCode)
 
 	// store or delete code
 	action := "updated"
 	if len(code) == 0 {
-		store.Delete(codeHash)
+		prefixStore.Delete(codeHash)
 		action = "deleted"
 	} else {
-		store.Set(codeHash, code)
+		prefixStore.Set(codeHash, code)
 	}
 	k.Logger(ctx).Debug(
 		fmt.Sprintf("code %s", action),
@@ -187,7 +209,7 @@ func (k *Keeper) DeleteAccount(ctx sdk.Context, addr common.Address) error {
 	// NOTE: only Ethereum accounts (contracts) can be selfdestructed
 	_, ok := acct.(ethermint.EthAccountI)
 	if !ok {
-		return sdkerrors.Wrapf(types.ErrInvalidAccount, "type %T, address %s", acct, addr)
+		return errorsmod.Wrapf(types.ErrInvalidAccount, "type %T, address %s", acct, addr)
 	}
 
 	// clear balance

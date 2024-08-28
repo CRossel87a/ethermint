@@ -1,3 +1,18 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package keeper
 
 import (
@@ -6,13 +21,16 @@ import (
 	"fmt"
 	"strconv"
 
-	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	tmtypes "github.com/tendermint/tendermint/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 
-	"github.com/armon/go-metrics"
+	tmbytes "github.com/cometbft/cometbft/libs/bytes"
+	tmtypes "github.com/cometbft/cometbft/types"
+
+	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/hashicorp/go-metrics"
 
 	"github.com/evmos/ethermint/x/evm/types"
 )
@@ -32,20 +50,16 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (*t
 
 	labels := []metrics.Label{
 		telemetry.NewLabel("tx_type", fmt.Sprintf("%d", tx.Type())),
-		telemetry.NewLabel("from", sender),
 	}
 	if tx.To() == nil {
-		labels = []metrics.Label{telemetry.NewLabel("execution", "create")}
+		labels = append(labels, telemetry.NewLabel("execution", "create"))
 	} else {
-		labels = []metrics.Label{
-			telemetry.NewLabel("execution", "call"),
-			telemetry.NewLabel("to", tx.To().Hex()), // recipient address (contract or account)
-		}
+		labels = append(labels, telemetry.NewLabel("execution", "call"))
 	}
 
-	response, err := k.ApplyTransaction(ctx, tx)
+	response, err := k.ApplyTransaction(ctx, msg)
 	if err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to apply transaction")
+		return nil, errorsmod.Wrap(err, "failed to apply transaction")
 	}
 
 	defer func() {
@@ -64,7 +78,7 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (*t
 
 			// Observe which users define a gas limit >> gas used. Note, that
 			// gas_limit and gas_used are always > 0
-			gasLimit := sdk.NewDec(int64(tx.Gas()))
+			gasLimit := sdkmath.LegacyNewDec(int64(tx.Gas()))
 			gasRatio, err := gasLimit.QuoInt64(int64(response.GasUsed)).Float64()
 			if err == nil {
 				telemetry.SetGaugeWithLabels(
@@ -104,7 +118,7 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (*t
 	for i, log := range response.Logs {
 		value, err := json.Marshal(log)
 		if err != nil {
-			return nil, sdkerrors.Wrap(err, "failed to encode log")
+			return nil, errorsmod.Wrap(err, "failed to encode log")
 		}
 		txLogAttrs[i] = sdk.NewAttribute(types.AttributeKeyTxLog, string(value))
 	}
@@ -128,4 +142,29 @@ func (k *Keeper) EthereumTx(goCtx context.Context, msg *types.MsgEthereumTx) (*t
 	})
 
 	return response, nil
+}
+
+// UpdateParams implements the gRPC MsgServer interface. When an UpdateParams
+// proposal passes, it updates the module parameters. The update can only be
+// performed if the requested authority is the Cosmos SDK governance module
+// account.
+func (k *Keeper) UpdateParams(goCtx context.Context, req *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
+	if _, err := sdk.AccAddressFromBech32(req.Authority); err != nil {
+		return nil, errorsmod.Wrap(err, "invalid authority address")
+	}
+
+	if k.authority.String() != req.Authority {
+		return nil, errorsmod.Wrapf(govtypes.ErrInvalidSigner, "invalid authority, expected %s, got %s", k.authority.String(), req.Authority)
+	}
+
+	if err := req.Params.Validate(); err != nil {
+		return nil, err
+	}
+
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := k.SetParams(ctx, req.Params); err != nil {
+		return nil, err
+	}
+
+	return &types.MsgUpdateParamsResponse{}, nil
 }

@@ -1,15 +1,31 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package backend
 
 import (
 	"encoding/json"
 	"fmt"
 
+	tmrpctypes "github.com/cometbft/cometbft/rpc/core/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	rpctypes "github.com/evmos/ethermint/rpc/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
 	"github.com/pkg/errors"
-	tmrpctypes "github.com/tendermint/tendermint/rpc/core/types"
 )
 
 // TraceTransaction returns the structured logs created during the execution of EVM
@@ -27,7 +43,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 		return nil, errors.New("genesis is not traceable")
 	}
 
-	blk, err := b.GetTendermintBlockByNumber(rpctypes.BlockNumber(transaction.Height))
+	blk, err := b.TendermintBlockByNumber(rpctypes.BlockNumber(transaction.Height))
 	if err != nil {
 		b.logger.Debug("block not found", "height", transaction.Height)
 		return nil, err
@@ -84,6 +100,7 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 		BlockTime:       blk.Block.Time,
 		BlockHash:       common.Bytes2Hex(blk.BlockID.Hash),
 		ProposerAddress: sdk.ConsAddress(blk.Block.ProposerAddress),
+		ChainId:         b.chainID.Int64(),
 	}
 
 	if config != nil {
@@ -112,10 +129,13 @@ func (b *Backend) TraceTransaction(hash common.Hash, config *evmtypes.TraceConfi
 	return decodedResult, nil
 }
 
-// traceBlock configures a new tracer according to the provided configuration, and
+// TraceBlock configures a new tracer according to the provided configuration, and
 // executes all the transactions contained within. The return value will be one item
 // per transaction, dependent on the requested tracer.
-func (b *Backend) TraceBlock(height rpctypes.BlockNumber, config *evmtypes.TraceConfig, block *tmrpctypes.ResultBlock) ([]*evmtypes.TxTraceResult, error) {
+func (b *Backend) TraceBlock(height rpctypes.BlockNumber,
+	config *evmtypes.TraceConfig,
+	block *tmrpctypes.ResultBlock,
+) ([]*evmtypes.TxTraceResult, error) {
 	txs := block.Block.Txs
 	txsLength := len(txs)
 
@@ -123,11 +143,19 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber, config *evmtypes.Trace
 		// If there are no transactions return empty array
 		return []*evmtypes.TxTraceResult{}, nil
 	}
-
+	blockRes, err := b.TendermintBlockResultByNumber(&block.Block.Height)
+	if err != nil {
+		b.logger.Debug("block result not found", "height", block.Block.Height, "error", err.Error())
+		return nil, nil
+	}
 	txDecoder := b.clientCtx.TxConfig.TxDecoder()
 
 	var txsMessages []*evmtypes.MsgEthereumTx
 	for i, tx := range txs {
+		if !rpctypes.TxSuccessOrExceedsBlockGasLimit(blockRes.TxsResults[i]) {
+			b.logger.Debug("invalid tx result code", "cosmos-hash", hexutil.Encode(tx.Hash()))
+			continue
+		}
 		decodedTx, err := txDecoder(tx)
 		if err != nil {
 			b.logger.Error("failed to decode transaction", "hash", txs[i].Hash(), "error", err.Error())
@@ -159,6 +187,7 @@ func (b *Backend) TraceBlock(height rpctypes.BlockNumber, config *evmtypes.Trace
 		BlockTime:       block.Block.Time,
 		BlockHash:       common.Bytes2Hex(block.BlockID.Hash),
 		ProposerAddress: sdk.ConsAddress(block.Block.ProposerAddress),
+		ChainId:         b.chainID.Int64(),
 	}
 
 	res, err := b.queryClient.TraceBlock(ctxWithHeight, traceBlockRequest)

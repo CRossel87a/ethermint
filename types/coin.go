@@ -1,7 +1,24 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package types
 
 import (
 	"math/big"
+
+	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -25,17 +42,17 @@ const (
 )
 
 // PowerReduction defines the default power reduction value for staking
-var PowerReduction = sdk.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(BaseDenomUnit), nil))
+var PowerReduction = sdkmath.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(BaseDenomUnit), nil))
 
-// NewPhotonCoin is a utility function that returns an "aphoton" coin with the given sdk.Int amount.
+// NewPhotonCoin is a utility function that returns an "aphoton" coin with the given sdkmath.Int amount.
 // The function will panic if the provided amount is negative.
-func NewPhotonCoin(amount sdk.Int) sdk.Coin {
+func NewPhotonCoin(amount sdkmath.Int) sdk.Coin {
 	return sdk.NewCoin(AttoPhoton, amount)
 }
 
-// NewPhotonDecCoin is a utility function that returns an "aphoton" decimal coin with the given sdk.Int amount.
+// NewPhotonDecCoin is a utility function that returns an "aphoton" decimal coin with the given sdkmath.Int amount.
 // The function will panic if the provided amount is negative.
-func NewPhotonDecCoin(amount sdk.Int) sdk.DecCoin {
+func NewPhotonDecCoin(amount sdkmath.Int) sdk.DecCoin {
 	return sdk.NewDecCoin(AttoPhoton, amount)
 }
 

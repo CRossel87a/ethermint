@@ -1,21 +1,32 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package eth
 
 import (
 	"context"
-	"math/big"
 
-	"github.com/ethereum/go-ethereum/signer/core/apitypes"
-
-	"github.com/ethereum/go-ethereum/rpc"
-
-	"github.com/tendermint/tendermint/libs/log"
+	"cosmossdk.io/log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 
 	"github.com/evmos/ethermint/rpc/backend"
-
 	rpctypes "github.com/evmos/ethermint/rpc/types"
 	ethermint "github.com/evmos/ethermint/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
@@ -34,6 +45,8 @@ type EthereumAPI interface {
 	BlockNumber() (hexutil.Uint64, error)
 	GetBlockByNumber(ethBlockNum rpctypes.BlockNumber, fullTx bool) (map[string]interface{}, error)
 	GetBlockByHash(hash common.Hash, fullTx bool) (map[string]interface{}, error)
+	GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint
+	GetBlockTransactionCountByNumber(blockNum rpctypes.BlockNumber) *hexutil.Uint
 
 	// Reading Transactions
 	//
@@ -42,8 +55,6 @@ type EthereumAPI interface {
 	GetTransactionByHash(hash common.Hash) (*rpctypes.RPCTransaction, error)
 	GetTransactionCount(address common.Address, blockNrOrHash rpctypes.BlockNumberOrHash) (*hexutil.Uint64, error)
 	GetTransactionReceipt(hash common.Hash) (map[string]interface{}, error)
-	GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint
-	GetBlockTransactionCountByNumber(blockNum rpctypes.BlockNumber) *hexutil.Uint
 	GetTransactionByBlockHashAndIndex(hash common.Hash, idx hexutil.Uint) (*rpctypes.RPCTransaction, error)
 	GetTransactionByBlockNumberAndIndex(blockNum rpctypes.BlockNumber, idx hexutil.Uint) (*rpctypes.RPCTransaction, error)
 	// eth_getBlockReceipts
@@ -123,10 +134,7 @@ type PublicAPI struct {
 }
 
 // NewPublicAPI creates an instance of the public ETH Web3 API.
-func NewPublicAPI(
-	logger log.Logger,
-	backend backend.EVMBackend,
-) *PublicAPI {
+func NewPublicAPI(logger log.Logger, backend backend.EVMBackend) *PublicAPI {
 	api := &PublicAPI{
 		ctx:     context.Background(),
 		logger:  logger.With("client", "json-rpc"),
@@ -171,7 +179,7 @@ func (e *PublicAPI) GetTransactionByHash(hash common.Hash) (*rpctypes.RPCTransac
 // GetTransactionCount returns the number of transactions at the given address up to the given block number.
 func (e *PublicAPI) GetTransactionCount(address common.Address, blockNrOrHash rpctypes.BlockNumberOrHash) (*hexutil.Uint64, error) {
 	e.logger.Debug("eth_getTransactionCount", "address", address.Hex(), "block number or hash", blockNrOrHash)
-	blockNum, err := e.backend.GetBlockNumber(blockNrOrHash)
+	blockNum, err := e.backend.BlockNumberFromTendermint(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -182,21 +190,18 @@ func (e *PublicAPI) GetTransactionCount(address common.Address, blockNrOrHash rp
 func (e *PublicAPI) GetTransactionReceipt(hash common.Hash) (map[string]interface{}, error) {
 	hexTx := hash.Hex()
 	e.logger.Debug("eth_getTransactionReceipt", "hash", hexTx)
-
 	return e.backend.GetTransactionReceipt(hash)
 }
 
 // GetBlockTransactionCountByHash returns the number of transactions in the block identified by hash.
 func (e *PublicAPI) GetBlockTransactionCountByHash(hash common.Hash) *hexutil.Uint {
 	e.logger.Debug("eth_getBlockTransactionCountByHash", "hash", hash.Hex())
-
 	return e.backend.GetBlockTransactionCountByHash(hash)
 }
 
 // GetBlockTransactionCountByNumber returns the number of transactions in the block identified by number.
 func (e *PublicAPI) GetBlockTransactionCountByNumber(blockNum rpctypes.BlockNumber) *hexutil.Uint {
 	e.logger.Debug("eth_getBlockTransactionCountByNumber", "height", blockNum.Int64())
-
 	return e.backend.GetBlockTransactionCountByNumber(blockNum)
 }
 
@@ -209,19 +214,7 @@ func (e *PublicAPI) GetTransactionByBlockHashAndIndex(hash common.Hash, idx hexu
 // GetTransactionByBlockNumberAndIndex returns the transaction identified by number and index.
 func (e *PublicAPI) GetTransactionByBlockNumberAndIndex(blockNum rpctypes.BlockNumber, idx hexutil.Uint) (*rpctypes.RPCTransaction, error) {
 	e.logger.Debug("eth_getTransactionByBlockNumberAndIndex", "number", blockNum, "index", idx)
-
-	block, err := e.backend.GetTendermintBlockByNumber(blockNum)
-	if err != nil {
-		e.logger.Debug("block not found", "height", blockNum.Int64(), "error", err.Error())
-		return nil, nil
-	}
-
-	if block.Block == nil {
-		e.logger.Debug("block not found", "height", blockNum.Int64())
-		return nil, nil
-	}
-
-	return e.backend.GetTransactionByBlockAndIndex(block, idx)
+	return e.backend.GetTransactionByBlockNumberAndIndex(blockNum, idx)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -269,7 +262,10 @@ func (e *PublicAPI) GetCode(address common.Address, blockNrOrHash rpctypes.Block
 }
 
 // GetProof returns an account object with proof and any storage proofs
-func (e *PublicAPI) GetProof(address common.Address, storageKeys []string, blockNrOrHash rpctypes.BlockNumberOrHash) (*rpctypes.AccountResult, error) {
+func (e *PublicAPI) GetProof(address common.Address,
+	storageKeys []string,
+	blockNrOrHash rpctypes.BlockNumberOrHash,
+) (*rpctypes.AccountResult, error) {
 	e.logger.Debug("eth_getProof", "address", address.Hex(), "keys", storageKeys, "block number or hash", blockNrOrHash)
 	return e.backend.GetProof(address, storageKeys, blockNrOrHash)
 }
@@ -279,10 +275,13 @@ func (e *PublicAPI) GetProof(address common.Address, storageKeys []string, block
 ///////////////////////////////////////////////////////////////////////////////
 
 // Call performs a raw contract call.
-func (e *PublicAPI) Call(args evmtypes.TransactionArgs, blockNrOrHash rpctypes.BlockNumberOrHash, _ *rpctypes.StateOverride) (hexutil.Bytes, error) {
+func (e *PublicAPI) Call(args evmtypes.TransactionArgs,
+	blockNrOrHash rpctypes.BlockNumberOrHash,
+	_ *rpctypes.StateOverride,
+) (hexutil.Bytes, error) {
 	e.logger.Debug("eth_call", "args", args.String(), "block number or hash", blockNrOrHash)
 
-	blockNum, err := e.backend.GetBlockNumber(blockNrOrHash)
+	blockNum, err := e.backend.BlockNumberFromTendermint(blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -297,10 +296,10 @@ func (e *PublicAPI) Call(args evmtypes.TransactionArgs, blockNrOrHash rpctypes.B
 ///////////////////////////////////////////////////////////////////////////////
 ///                           Event Logs													          ///
 ///////////////////////////////////////////////////////////////////////////////
-// FILTER API
+// FILTER API at ./filters/api.go
 
 ///////////////////////////////////////////////////////////////////////////////
-///                           Chain Information													          ///
+///                           Chain Information										          ///
 ///////////////////////////////////////////////////////////////////////////////
 
 // ProtocolVersion returns the supported Ethereum protocol version.
@@ -312,31 +311,7 @@ func (e *PublicAPI) ProtocolVersion() hexutil.Uint {
 // GasPrice returns the current gas price based on Ethermint's gas price oracle.
 func (e *PublicAPI) GasPrice() (*hexutil.Big, error) {
 	e.logger.Debug("eth_gasPrice")
-	var (
-		result *big.Int
-		err    error
-	)
-	if head := e.backend.CurrentHeader(); head.BaseFee != nil {
-		result, err = e.backend.SuggestGasTipCap(head.BaseFee)
-		if err != nil {
-			return nil, err
-		}
-		result = result.Add(result, head.BaseFee)
-	} else {
-		result = big.NewInt(e.backend.RPCMinGasPrice())
-	}
-
-	// return at least GlobalMinGasPrice from FeeMarket module
-	minGasPrice, err := e.backend.GlobalMinGasPrice()
-	if err != nil {
-		return nil, err
-	}
-	minGasPriceInt := minGasPrice.TruncateInt().BigInt()
-	if result.Cmp(minGasPriceInt) < 0 {
-		result = minGasPriceInt
-	}
-
-	return (*hexutil.Big)(result), nil
+	return e.backend.GasPrice()
 }
 
 // EstimateGas returns an estimate of gas usage for the given smart contract call.
@@ -345,7 +320,10 @@ func (e *PublicAPI) EstimateGas(args evmtypes.TransactionArgs, blockNrOptional *
 	return e.backend.EstimateGas(args, blockNrOptional)
 }
 
-func (e *PublicAPI) FeeHistory(blockCount rpc.DecimalOrHex, lastBlock rpc.BlockNumber, rewardPercentiles []float64) (*rpctypes.FeeHistoryResult, error) {
+func (e *PublicAPI) FeeHistory(blockCount rpc.DecimalOrHex,
+	lastBlock rpc.BlockNumber,
+	rewardPercentiles []float64,
+) (*rpctypes.FeeHistoryResult, error) {
 	e.logger.Debug("eth_feeHistory")
 	return e.backend.FeeHistory(blockCount, lastBlock, rewardPercentiles)
 }
@@ -372,22 +350,22 @@ func (e *PublicAPI) ChainId() (*hexutil.Big, error) { //nolint
 ///////////////////////////////////////////////////////////////////////////////
 
 // GetUncleByBlockHashAndIndex returns the uncle identified by hash and index. Always returns nil.
-func (e *PublicAPI) GetUncleByBlockHashAndIndex(hash common.Hash, idx hexutil.Uint) map[string]interface{} {
+func (e *PublicAPI) GetUncleByBlockHashAndIndex(_ common.Hash, _ hexutil.Uint) map[string]interface{} {
 	return nil
 }
 
 // GetUncleByBlockNumberAndIndex returns the uncle identified by number and index. Always returns nil.
-func (e *PublicAPI) GetUncleByBlockNumberAndIndex(number, idx hexutil.Uint) map[string]interface{} {
+func (e *PublicAPI) GetUncleByBlockNumberAndIndex(_, _ hexutil.Uint) map[string]interface{} {
 	return nil
 }
 
 // GetUncleCountByBlockHash returns the number of uncles in the block identified by hash. Always zero.
-func (e *PublicAPI) GetUncleCountByBlockHash(hash common.Hash) hexutil.Uint {
+func (e *PublicAPI) GetUncleCountByBlockHash(_ common.Hash) hexutil.Uint {
 	return 0
 }
 
 // GetUncleCountByBlockNumber returns the number of uncles in the block identified by number. Always zero.
-func (e *PublicAPI) GetUncleCountByBlockNumber(blockNum rpctypes.BlockNumber) hexutil.Uint {
+func (e *PublicAPI) GetUncleCountByBlockNumber(_ rpctypes.BlockNumber) hexutil.Uint {
 	return 0
 }
 
@@ -457,7 +435,7 @@ func (e *PublicAPI) GetTransactionLogs(txHash common.Hash) ([]*ethtypes.Log, err
 		return nil, nil
 	}
 
-	resBlockResult, err := e.backend.GetTendermintBlockResultByNumber(&res.Height)
+	resBlockResult, err := e.backend.TendermintBlockResultByNumber(&res.Height)
 	if err != nil {
 		e.logger.Debug("block result not found", "number", res.Height, "error", err.Error())
 		return nil, nil
@@ -499,7 +477,11 @@ func (e *PublicAPI) FillTransaction(args evmtypes.TransactionArgs) (*rpctypes.Si
 
 // Resend accepts an existing transaction and a new gas price and limit. It will remove
 // the given transaction from the pool and reinsert it with the new gas price and limit.
-func (e *PublicAPI) Resend(_ context.Context, args evmtypes.TransactionArgs, gasPrice *hexutil.Big, gasLimit *hexutil.Uint64) (common.Hash, error) {
+func (e *PublicAPI) Resend(_ context.Context,
+	args evmtypes.TransactionArgs,
+	gasPrice *hexutil.Big,
+	gasLimit *hexutil.Uint64,
+) (common.Hash, error) {
 	e.logger.Debug("eth_resend", "args", args.String())
 	return e.backend.Resend(args, gasPrice, gasLimit)
 }
@@ -529,6 +511,7 @@ func (e *PublicAPI) GetPendingTransactions() ([]*rpctypes.RPCTransaction, error)
 				uint64(0),
 				uint64(0),
 				nil,
+				e.backend.ChainConfig().ChainID,
 			)
 			if err != nil {
 				return nil, err

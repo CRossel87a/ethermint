@@ -1,19 +1,34 @@
+// Copyright 2021 Evmos Foundation
+// This file is part of Evmos' Ethermint library.
+//
+// The Ethermint library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// The Ethermint library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with the Ethermint library. If not, see https://github.com/evmos/ethermint/blob/main/LICENSE
 package indexer
 
 import (
 	"fmt"
 
+	errorsmod "cosmossdk.io/errors"
+	"cosmossdk.io/log"
+	abci "github.com/cometbft/cometbft/abci/types"
+	tmtypes "github.com/cometbft/cometbft/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	"github.com/ethereum/go-ethereum/common"
 	rpctypes "github.com/evmos/ethermint/rpc/types"
-	abci "github.com/tendermint/tendermint/abci/types"
-	"github.com/tendermint/tendermint/libs/log"
-	tmtypes "github.com/tendermint/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
 
 	ethermint "github.com/evmos/ethermint/types"
 	evmtypes "github.com/evmos/ethermint/x/evm/types"
@@ -46,7 +61,7 @@ func NewKVIndexer(db dbm.DB, logger log.Logger, clientCtx client.Context) *KVInd
 // - Parses eth Tx infos from cosmos-sdk events for every TxResult
 // - Iterates over all the messages of the Tx
 // - Builds and stores a indexer.TxResult based on parsed events for every message
-func (kv *KVIndexer) IndexBlock(block *tmtypes.Block, txResults []*abci.ResponseDeliverTx) error {
+func (kv *KVIndexer) IndexBlock(block *tmtypes.Block, blockResult *abci.ResponseFinalizeBlock) error {
 	height := block.Header.Height
 
 	batch := kv.db.NewBatch()
@@ -55,7 +70,7 @@ func (kv *KVIndexer) IndexBlock(block *tmtypes.Block, txResults []*abci.Response
 	// record index of valid eth tx during the iteration
 	var ethTxIndex int32
 	for txIndex, tx := range block.Txs {
-		result := txResults[txIndex]
+		result := blockResult.TxResults[txIndex]
 		if !rpctypes.TxSuccessOrExceedsBlockGasLimit(result) {
 			continue
 		}
@@ -110,12 +125,12 @@ func (kv *KVIndexer) IndexBlock(block *tmtypes.Block, txResults []*abci.Response
 			ethTxIndex++
 
 			if err := saveTxResult(kv.clientCtx.Codec, batch, txHash, &txResult); err != nil {
-				return sdkerrors.Wrapf(err, "IndexBlock %d", height)
+				return errorsmod.Wrapf(err, "IndexBlock %d", height)
 			}
 		}
 	}
 	if err := batch.Write(); err != nil {
-		return sdkerrors.Wrapf(err, "IndexBlock %d, write batch", block.Height)
+		return errorsmod.Wrapf(err, "IndexBlock %d, write batch", block.Height)
 	}
 	return nil
 }
@@ -134,14 +149,14 @@ func (kv *KVIndexer) FirstIndexedBlock() (int64, error) {
 func (kv *KVIndexer) GetByTxHash(hash common.Hash) (*ethermint.TxResult, error) {
 	bz, err := kv.db.Get(TxHashKey(hash))
 	if err != nil {
-		return nil, sdkerrors.Wrapf(err, "GetByTxHash %s", hash.Hex())
+		return nil, errorsmod.Wrapf(err, "GetByTxHash %s", hash.Hex())
 	}
 	if len(bz) == 0 {
 		return nil, fmt.Errorf("tx not found, hash: %s", hash.Hex())
 	}
 	var txKey ethermint.TxResult
 	if err := kv.clientCtx.Codec.Unmarshal(bz, &txKey); err != nil {
-		return nil, sdkerrors.Wrapf(err, "GetByTxHash %s", hash.Hex())
+		return nil, errorsmod.Wrapf(err, "GetByTxHash %s", hash.Hex())
 	}
 	return &txKey, nil
 }
@@ -150,7 +165,7 @@ func (kv *KVIndexer) GetByTxHash(hash common.Hash) (*ethermint.TxResult, error) 
 func (kv *KVIndexer) GetByBlockAndIndex(blockNumber int64, txIndex int32) (*ethermint.TxResult, error) {
 	bz, err := kv.db.Get(TxIndexKey(blockNumber, txIndex))
 	if err != nil {
-		return nil, sdkerrors.Wrapf(err, "GetByBlockAndIndex %d %d", blockNumber, txIndex)
+		return nil, errorsmod.Wrapf(err, "GetByBlockAndIndex %d %d", blockNumber, txIndex)
 	}
 	if len(bz) == 0 {
 		return nil, fmt.Errorf("tx not found, block: %d, eth-index: %d", blockNumber, txIndex)
@@ -174,7 +189,7 @@ func TxIndexKey(blockNumber int64, txIndex int32) []byte {
 func LoadLastBlock(db dbm.DB) (int64, error) {
 	it, err := db.ReverseIterator([]byte{KeyPrefixTxIndex}, []byte{KeyPrefixTxIndex + 1})
 	if err != nil {
-		return 0, sdkerrors.Wrap(err, "LoadLastBlock")
+		return 0, errorsmod.Wrap(err, "LoadLastBlock")
 	}
 	defer it.Close()
 	if !it.Valid() {
@@ -187,7 +202,7 @@ func LoadLastBlock(db dbm.DB) (int64, error) {
 func LoadFirstBlock(db dbm.DB) (int64, error) {
 	it, err := db.Iterator([]byte{KeyPrefixTxIndex}, []byte{KeyPrefixTxIndex + 1})
 	if err != nil {
-		return 0, sdkerrors.Wrap(err, "LoadFirstBlock")
+		return 0, errorsmod.Wrap(err, "LoadFirstBlock")
 	}
 	defer it.Close()
 	if !it.Valid() {
@@ -213,10 +228,10 @@ func isEthTx(tx sdk.Tx) bool {
 func saveTxResult(codec codec.Codec, batch dbm.Batch, txHash common.Hash, txResult *ethermint.TxResult) error {
 	bz := codec.MustMarshal(txResult)
 	if err := batch.Set(TxHashKey(txHash), bz); err != nil {
-		return sdkerrors.Wrap(err, "set tx-hash key")
+		return errorsmod.Wrap(err, "set tx-hash key")
 	}
 	if err := batch.Set(TxIndexKey(txResult.Height, txResult.EthTxIndex), txHash.Bytes()); err != nil {
-		return sdkerrors.Wrap(err, "set tx-index key")
+		return errorsmod.Wrap(err, "set tx-index key")
 	}
 	return nil
 }

@@ -220,29 +220,6 @@ func (s *websocketsServer) readLoop(wsConn *wsConn) {
 			}
 		}
 	}()
-
-	// Keep the connection alive with periodic messages
-	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := wsConn.WriteJSON(&SubscriptionNotification{
-				Jsonrpc: "2.0",
-				Method:  "eth_subscription",
-				Params: &SubscriptionResult{
-					Subscription: "keepalive",
-					Result:       "ping",
-				},
-			}); err != nil {
-				s.logger.Error("ping error", "error", err.Error())
-				return
-			}
-		case <-done:
-			return
-		}
-	}
 }
 
 func (s *websocketsServer) handleMessage(wsConn *wsConn, mb []byte, subscriptions map[rpc.ID]pubsub.UnsubscribeFunc) error {

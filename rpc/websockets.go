@@ -405,6 +405,9 @@ func (api *pubSubAPI) subscribe(wsConn *wsConn, subID rpc.ID, params []interface
 		return api.subscribeLogs(wsConn, subID, nil)
 	case "newPendingTransactions":
 		return api.subscribePendingTransactions(wsConn, subID)
+
+	case "newPendingTransactionsWithBody":
+		return api.subscribePendingTransactionsBody(wsConn, subID)
 	case "syncing":
 		return api.subscribeSyncing(wsConn, subID)
 	default:
@@ -682,6 +685,64 @@ func (api *pubSubAPI) subscribePendingTransactions(wsConn *wsConn, subID rpc.ID)
 						Params: &SubscriptionResult{
 							Subscription: subID,
 							Result:       ethTx.Hash,
+						},
+					}
+
+					err = wsConn.WriteJSON(res)
+					if err != nil {
+						api.logger.Debug("error writing header, will drop peer", "error", err.Error())
+
+						try(func() {
+							if err != websocket.ErrCloseSent {
+								_ = wsConn.Close()
+							}
+						}, api.logger, "closing websocket peer sub")
+					}
+				}
+			case err, ok := <-errCh:
+				if !ok {
+					return
+				}
+				api.logger.Debug("dropping PendingTransactions WebSocket subscription", subID, "error", err.Error())
+			}
+		}
+	}()
+
+	return unsubFn, nil
+}
+
+func (api *pubSubAPI) subscribePendingTransactionsBody(wsConn *wsConn, subID rpc.ID) (pubsub.UnsubscribeFunc, error) {
+	sub, unsubFn, err := api.events.SubscribePendingTxs()
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating block filter: %s")
+	}
+
+	go func() {
+		txsCh := sub.Event()
+		errCh := sub.Err()
+		for {
+			select {
+			case ev := <-txsCh:
+				data, ok := ev.Data.(tmtypes.EventDataTx)
+				if !ok {
+					api.logger.Debug("event data type mismatch", "type", fmt.Sprintf("%T", ev.Data))
+					continue
+				}
+
+				ethTxs, err := types.RawTxToEthTx(api.clientCtx, data.Tx)
+				if err != nil {
+					// not ethereum tx
+					continue
+				}
+
+				for _, ethTx := range ethTxs {
+					// write to ws conn
+					res := &SubscriptionNotification{
+						Jsonrpc: "2.0",
+						Method:  "eth_subscription",
+						Params: &SubscriptionResult{
+							Subscription: subID,
+							Result:       ethTx,
 						},
 					}
 
